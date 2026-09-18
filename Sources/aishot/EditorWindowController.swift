@@ -17,8 +17,10 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
         let maxSize = (NSScreen.main?.visibleFrame.size).map {
             CGSize(width: $0.width * 0.9, height: $0.height * 0.9 - Self.toolbarHeight)
         } ?? CGSize(width: 1200, height: 800)
-        let canvasSize = CanvasTransform.fittedViewSize(
-            imageSize: CGSize(width: image.width, height: image.height), maxSize: maxSize)
+        let canvasSize = CanvasTransform.preferredCanvasSize(
+            imagePixelSize: CGSize(width: image.width, height: image.height),
+            backingScale: NSScreen.main?.backingScaleFactor ?? 2,
+            maxPointSize: maxSize)
 
         canvas = CanvasView(image: image, frame: NSRect(origin: .zero, size: canvasSize))
 

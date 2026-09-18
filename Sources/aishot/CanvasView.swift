@@ -107,9 +107,10 @@ final class CanvasView: NSView {
 
     private func beginTextEntry(at point: CGPoint) {
         let viewFontSize = style.fontSize / transform.scale
-        let field = NSTextField(frame: NSRect(x: point.x, y: point.y - viewFontSize * 0.3,
+        let height = (viewFontSize * 1.8).rounded()
+        let field = NSTextField(frame: NSRect(x: point.x, y: point.y - height * 0.3,
                                               width: max(160, bounds.width - point.x - 8),
-                                              height: viewFontSize * 1.8))
+                                              height: height))
         field.font = NSFont(name: style.fontName, size: viewFontSize) ?? .boldSystemFont(ofSize: viewFontSize)
         field.textColor = NSColor(cgColor: style.color)
         field.backgroundColor = NSColor.white.withAlphaComponent(0.85)
@@ -127,11 +128,15 @@ final class CanvasView: NSView {
         commitPendingText()
     }
 
-    /// Placed from the click point as a baseline, matching how CoreText draws it.
+    /// CoreText draws from a baseline, so take the field's actual first baseline
+    /// rather than guessing an offset — otherwise the text jumps on commit.
     func commitPendingText() {
         guard let field = textEditor else { return }
         let string = field.stringValue
-        let origin = CGPoint(x: field.frame.minX, y: field.frame.minY + style.fontSize / transform.scale * 0.3)
+        let textRect = field.cell?.titleRect(forBounds: field.bounds) ?? field.bounds
+        let baselineFromTop = field.firstBaselineOffsetFromTop
+        let origin = CGPoint(x: field.frame.minX + textRect.minX,
+                             y: field.frame.maxY - baselineFromTop)
         textEditor = nil
         field.removeFromSuperview()
         window?.makeFirstResponder(self)

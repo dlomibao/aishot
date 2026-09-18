@@ -78,3 +78,36 @@ final class AnnotationDocumentTests: XCTestCase {
         XCTAssertEqual(doc.nextBadgeNumber, 2)
     }
 }
+
+final class PreferredCanvasSizeTests: XCTestCase {
+    func testRetinaImageOpensAtItsTrueOnScreenSize() {
+        // A 600x400pt region grabbed on a 2x display is a 1200x800px image.
+        let size = CanvasTransform.preferredCanvasSize(imagePixelSize: CGSize(width: 1200, height: 800),
+                                                       backingScale: 2,
+                                                       maxPointSize: CGSize(width: 1440, height: 900))
+        XCTAssertEqual(size.width, 600, accuracy: 0.0001)
+        XCTAssertEqual(size.height, 400, accuracy: 0.0001)
+    }
+
+    func testNonRetinaImageIsUnchanged() {
+        let size = CanvasTransform.preferredCanvasSize(imagePixelSize: CGSize(width: 600, height: 400),
+                                                       backingScale: 1,
+                                                       maxPointSize: CGSize(width: 1440, height: 900))
+        XCTAssertEqual(size.width, 600, accuracy: 0.0001)
+    }
+
+    func testAnOversizedGrabIsStillClampedToTheScreen() {
+        let size = CanvasTransform.preferredCanvasSize(imagePixelSize: CGSize(width: 6000, height: 4000),
+                                                       backingScale: 2,
+                                                       maxPointSize: CGSize(width: 1500, height: 1000))
+        XCTAssertEqual(size.width, 1500, accuracy: 0.0001)
+        XCTAssertEqual(size.height, 1000, accuracy: 0.0001)
+    }
+
+    func testAZeroBackingScaleFallsBackToOneRatherThanDividingByZero() {
+        let size = CanvasTransform.preferredCanvasSize(imagePixelSize: CGSize(width: 300, height: 200),
+                                                       backingScale: 0,
+                                                       maxPointSize: CGSize(width: 1440, height: 900))
+        XCTAssertEqual(size.width, 300, accuracy: 0.0001)
+    }
+}

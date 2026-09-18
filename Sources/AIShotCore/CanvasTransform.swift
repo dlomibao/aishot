@@ -29,6 +29,21 @@ public struct CanvasTransform: Sendable {
                width: rect.width * scale, height: rect.height * scale)
     }
 
+    /// The window size that shows the image at its true on-screen size.
+    ///
+    /// A Retina region grab is twice as many pixels as the points it covered, so
+    /// fitting raw pixel dimensions into a point-measured screen would open the
+    /// editor at double the size the user selected, upscaled and soft. Convert to
+    /// points first, then fit.
+    public static func preferredCanvasSize(imagePixelSize: CGSize,
+                                           backingScale: CGFloat,
+                                           maxPointSize: CGSize) -> CGSize {
+        let scale = backingScale > 0 ? backingScale : 1
+        let pointSize = CGSize(width: imagePixelSize.width / scale,
+                               height: imagePixelSize.height / scale)
+        return fittedViewSize(imageSize: pointSize, maxSize: maxPointSize)
+    }
+
     /// Aspect-fit, and never upscale — a small screenshot stays crisp at 1:1.
     public static func fittedViewSize(imageSize: CGSize, maxSize: CGSize) -> CGSize {
         guard imageSize.width > 0, imageSize.height > 0 else { return maxSize }
