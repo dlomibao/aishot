@@ -14,6 +14,11 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/aishot"
 
+# Icon is generated from vectors at every iconset rung, not downscaled from one
+# master, so the 16px rung stays legible.
+swift scripts/make-icon.swift build/AIShot.iconset
+iconutil -c icns build/AIShot.iconset -o "$APP/Contents/Resources/AIShot.icns"
+
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -23,6 +28,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <key>CFBundleDisplayName</key><string>AIShot</string>
   <key>CFBundleIdentifier</key><string>com.dlomibao.aishot</string>
   <key>CFBundleExecutable</key><string>aishot</string>
+  <key>CFBundleIconFile</key><string>AIShot</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>0.1.0</string>
   <key>CFBundleVersion</key><string>1</string>
