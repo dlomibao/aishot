@@ -16,12 +16,18 @@ clipboard — then the annotated PNG replaces it.
 | Key | |
 |---|---|
 | `1`–`5` | arrow, box, text, number badge, redact |
+| `⌘V` | load the screenshot now on the clipboard |
 | `⌘Z` | undo last annotation |
 | `⏎` | copy annotated image, quit |
 | `Esc` | cancel |
 
 Arrows, boxes and redactions are drag; text and badges are click. Badges number
 themselves in placement order, and undoing one frees its number again.
+
+Leave the window open and keep shooting: `⌃⇧⌘4` again, then `⌘V` (or the
+**Reload** button) swaps in the new screenshot without relaunching. If you have
+already drawn something it asks before discarding it. Inside a text field `⌘V`
+pastes text as usual.
 
 Redaction writes solid black into the output pixels rather than laying an
 overlay on top, so the original content is genuinely gone from what you paste.

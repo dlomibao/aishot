@@ -147,6 +147,11 @@ final class CanvasView: NSView {
 
     var isEditingText: Bool { textEditor != nil }
 
+    /// While a text field is open ⌘V belongs to it, not to the image.
+    func pasteIntoTextEditor() {
+        textEditor?.currentEditor()?.paste(nil)
+    }
+
     // MARK: - Commands
 
     func undo() {

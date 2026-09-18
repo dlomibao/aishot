@@ -23,13 +23,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func presentEditor() {
         guard let image = Pasteboard.readImage() else {
             reportNoImage()
+            NSApp.terminate(nil)
             return
         }
+        show(image: image)
+    }
+
+    private func show(image: CGImage) {
         let controller = EditorWindowController(image: image) { [weak self] png in
             self?.finish(png: png)
         }
+        controller.onRequestReload = { [weak self] in self?.reloadFromClipboard() }
         self.controller = controller
         controller.show()
+    }
+
+    /// Swap in whatever is on the clipboard now. A fresh window rather than a
+    /// mutated one, so a differently sized screenshot still gets sized correctly.
+    private func reloadFromClipboard() {
+        guard let image = Pasteboard.readImage() else {
+            NSSound.beep()
+            reportNoImage()
+            return
+        }
+        controller?.discard()
+        controller = nil
+        show(image: image)
     }
 
     private func finish(png: Data?) {
@@ -48,7 +67,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.alertStyle = .informational
         NSApp.activate(ignoringOtherApps: true)
         alert.runModal()
-        NSApp.terminate(nil)
     }
 
     private func installKeyMonitor() {
@@ -74,7 +92,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         editMenu.addItem(.separator())
         editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
         editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
-        editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(withTitle: "New Image from Clipboard", action: #selector(pasteFromClipboard), keyEquivalent: "v")
         editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         editItem.submenu = editMenu
         main.addItem(editItem)
@@ -84,6 +102,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func undoAnnotation() {
         controller?.performUndo()
+    }
+
+    @objc private func pasteFromClipboard() {
+        controller?.pasteAction()
     }
 }
 

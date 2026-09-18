@@ -8,6 +8,7 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
     private var toolButtons: [Tool: NSButton] = [:]
     private var undoButton: NSButton!
     private let onFinish: @MainActor (Data?) -> Void
+    var onRequestReload: (@MainActor () -> Void)?
 
     private static let toolbarHeight: CGFloat = 44
 
@@ -73,6 +74,11 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
 
         toolbar.addArrangedSubview(NSView())
 
+        let reload = NSButton(title: "Reload  ⌘V", target: self, action: #selector(pasteAction))
+        reload.bezelStyle = .rounded
+        reload.toolTip = "Load the image currently on the clipboard"
+        toolbar.addArrangedSubview(reload)
+
         undoButton = NSButton(title: "Undo  ⌘Z", target: self, action: #selector(undoTapped))
         undoButton.bezelStyle = .rounded
         undoButton.isEnabled = false
@@ -113,6 +119,35 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
 
     @objc private func undoTapped() { canvas.undo() }
 
+    /// ⌘V means "paste text" inside a text field and "load the newer screenshot"
+    /// everywhere else.
+    @objc func pasteAction() {
+        if canvas.isEditingText {
+            canvas.pasteIntoTextEditor()
+            return
+        }
+        guard confirmDiscardingMarkup() else { return }
+        onRequestReload?()
+    }
+
+    private func confirmDiscardingMarkup() -> Bool {
+        guard canvas.canUndo else { return true }
+        let alert = NSAlert()
+        alert.messageText = "Replace this image?"
+        alert.informativeText = "Loading the clipboard will discard the markup you have already drawn."
+        alert.addButton(withTitle: "Replace")
+        alert.addButton(withTitle: "Keep Editing")
+        alert.alertStyle = .warning
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+
+    /// Tear down without reporting a result — used when swapping in a new image.
+    func discard() {
+        hasFinished = true
+        window?.orderOut(nil)
+        window?.delegate = nil
+    }
+
     func undoTappedFromMenu() { canvas.undo() }
 
     @objc private func cancelTapped() { finish(with: nil) }
@@ -128,6 +163,7 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
     }
 
     private var hasFinished = false
+
 
     private func finish(with png: Data?) {
         guard !hasFinished else { return }

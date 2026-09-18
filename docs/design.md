@@ -22,8 +22,15 @@ starts from there.
                                        └─────► ~/Pictures/aishots/*.png
 ```
 
-One shot per launch. The app opens, edits, writes, and quits — no resident
-process, no login item, no polling.
+One shot per launch, but the window can be kept open: `⌘V` re-reads the
+clipboard and swaps in a newer screenshot. That is a full window rebuild rather
+than a mutated image, because the next grab is rarely the same size and the
+canvas geometry is fixed at construction. No resident process, no login item,
+no polling — the app still quits when you finish or cancel.
+
+`⌘V` is overloaded deliberately: inside a text field it pastes text, everywhere
+else it loads the clipboard image. Replacing an image you have already marked up
+asks first.
 
 ## Coordinate space
 
