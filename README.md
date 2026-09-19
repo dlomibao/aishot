@@ -6,6 +6,9 @@
 
 **Mark up the screenshot on your clipboard and paste it into an AI coding session.**
 
+[![CI](https://github.com/dlomibao/aishot/actions/workflows/ci.yml/badge.svg)](https://github.com/dlomibao/aishot/actions/workflows/ci.yml)
+[![Download](https://img.shields.io/github/v/release/dlomibao/aishot?label=download)](https://github.com/dlomibao/aishot/releases/latest)
+
 </div>
 
 ![Example: a settings pane annotated with a redaction, numbered badges, a box, a note and an arrow](docs/images/example.png)
@@ -130,7 +133,7 @@ Manager and Retina scaling correctly. The app starts from the clipboard.
 
 ```sh
 swift build           # the app
-./scripts/test.sh     # core tests (needs Xcode's toolchain for XCTest)
+./scripts/test.sh     # 36 core tests (needs Xcode's toolchain for XCTest)
 ./scripts/install.sh  # build, bundle, install, wire up Raycast
 ```
 
