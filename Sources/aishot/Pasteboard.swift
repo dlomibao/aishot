@@ -31,8 +31,14 @@ enum Pasteboard {
 }
 
 enum OutputFile {
+    /// Where every copied image is archived automatically.
     static let directory = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Pictures/aishots", isDirectory: true)
+
+    /// Where the Save panel opens. Fixed rather than remembering the last
+    /// folder, so the destination is predictable every time.
+    static let saveDirectory = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Downloads", isDirectory: true)
 
     static func suggestedName(at date: Date = Date()) -> String {
         let formatter = DateFormatter()

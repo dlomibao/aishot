@@ -45,7 +45,7 @@ overlay on top, so the original content is genuinely gone from what you paste.
 
 `⌘S` opens a save panel and writes a PNG wherever you point it, then leaves the
 window open so you can keep annotating or save a second copy elsewhere. It
-reopens in the folder you last saved to.
+always opens in `~/Downloads`.
 
 Every result you copy is also written to `~/Pictures/aishots/` automatically —
 a fallback for targets that take a file but not a pasteboard image, and a

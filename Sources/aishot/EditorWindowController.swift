@@ -252,7 +252,7 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.png]
         panel.nameFieldStringValue = OutputFile.suggestedName()
-        panel.directoryURL = Preferences.lastSaveDirectory ?? OutputFile.directory
+        panel.directoryURL = OutputFile.saveDirectory
         panel.canCreateDirectories = true
         panel.isExtensionHidden = false
 
@@ -261,7 +261,6 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
             guard response == .OK, let url = panel.url else { return }
             do {
                 try png.write(to: url)
-                Preferences.lastSaveDirectory = url.deletingLastPathComponent()
                 window.subtitle = "Saved \(url.lastPathComponent)"
             } catch {
                 self?.presentError("Could not save to \(url.path): \(error.localizedDescription)")

@@ -104,6 +104,11 @@ already 200pt short. Keyboard hints live in tooltips rather than button titles
 for the same reason: the titles set the floor, and a small crop should not open
 a needlessly wide window.
 
+**The Save panel always opens in `~/Downloads`**, rather than remembering the
+last folder used. A fixed destination is predictable — you know where the file
+went without reading the panel — and `~/Pictures/aishots` still archives every
+copy regardless.
+
 **Save is not a terminal action.** Copy closes the editor; Save leaves it open,
 so you can save a PNG and carry on annotating or save a second copy elsewhere.
 
