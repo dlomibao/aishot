@@ -56,7 +56,7 @@ func mockScreenshot(width W: Int, height H: Int) -> CGImage {
     draw(text("Advanced", 26, rgb(0.95, 0.95, 0.97), bold: true), at: CGPoint(x: w * 0.26 + 40, y: h - 80), in: ctx)
 
     let rows: [(String, String)] = [
-        ("API endpoint", "https://api.internal/v2"),
+        ("API endpoint", "https://api.example.com/v2"),
         ("Contact email", "someone@example.com"),
         ("Retry attempts", "3"),
         ("Timeout", "30s"),
