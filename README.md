@@ -1,81 +1,107 @@
+<div align="center">
+
+<img src="docs/images/icon.png" width="128" alt="aishot">
+
 # aishot
 
-Mark up the screenshot on your clipboard and paste it into an AI coding session.
+**Mark up the screenshot on your clipboard and paste it into an AI coding session.**
 
-macOS already takes the screenshot. This is the missing second half: arrows,
-boxes, text, numbered steps, and redaction on top of whatever image is on the
-clipboard — then the annotated PNG replaces it.
+</div>
+
+![Example: a settings pane annotated with a redaction, numbered badges, a box, a note and an arrow](docs/images/example.png)
+
+macOS already takes the screenshot. This is the missing second half — arrows,
+boxes, text, numbered steps and redaction on top of whatever image is on the
+clipboard, then the annotated PNG replaces it.
+
+Pointing at the thing you mean is much faster than describing it. "The button
+in the lower right, no, the other one" becomes an arrow.
 
 ## Use
 
-1. `⌃⇧⌘4` — drag a region. macOS copies it to the clipboard.
-2. Your hotkey — the editor opens on that image.
-3. Mark it up. `⏎` copies the result back. `Esc` cancels and leaves the clipboard alone.
-4. Paste into your session.
+1. **`⌃⇧⌘4`** — drag a region. macOS copies it to the clipboard.
+2. **Your hotkey** — the editor opens on that image.
+3. Mark it up.
+4. **`⏎`** — the annotated image is on your clipboard. Paste it.
 
 | Key | |
 |---|---|
-| `1`–`5` | arrow, box, text, number badge, redact |
+| `1` `2` `3` `4` `5` | arrow, box, text, number badge, redact |
 | `C` | cycle colour |
 | `[` `]` | smaller / larger stroke and text |
-| `⌘V` | load the screenshot now on the clipboard |
 | `⌘Z` | undo last annotation |
-| `⌘S` | save a PNG somewhere and keep editing |
-| `⏎` | copy annotated image, quit |
-| `Esc` | cancel |
+| `⌘V` | load the screenshot now on the clipboard |
+| `⌘S` | save a PNG to `~/Downloads`, keep editing |
+| `⏎` | copy annotated image and close |
+| `esc` | cancel, leaving the clipboard untouched |
 
-Arrows, boxes and redactions are drag; text and badges are click. Badges number
-themselves in placement order, and undoing one frees its number again.
+Arrows, boxes and redactions are drag; text and badges are click.
 
-Leave the window open and keep shooting: `⌃⇧⌘4` again, then `⌘V` (or the
-**Reload** button) swaps in the new screenshot without relaunching. If you have
-already drawn something it asks before discarding it. Inside a text field `⌘V`
-pastes text as usual.
+**Keep the window open across shots.** `⌃⇧⌘4` again, then `⌘V` swaps in the new
+screenshot without relaunching. It asks first if you have already drawn
+something.
 
-Colour and size apply to what you draw **next** — each shape keeps the style it
-was drawn with, so you can put a yellow box beside a red arrow. Six swatches,
-picked to stay legible on light and dark screenshots, and one S/M/L control that
-scales stroke and text together. Size is relative to the image, so "large" on a
-4K grab and on a small crop both look large. Your last colour and size are
-remembered between launches.
+**Style applies to what you draw next.** Each shape keeps the colour and size
+it was drawn with, so a yellow note can sit beside a red arrow. Size is
+relative to the image, so "large" means large on a 4K grab and on a small crop
+alike. Your last choice is remembered between launches.
 
-Redaction is always solid black regardless of the selected colour, and writes
-into the output pixels rather than laying an
-overlay on top, so the original content is genuinely gone from what you paste.
+**Redaction is destructive.** It writes solid black into the output pixels
+rather than laying an overlay on top, so the original content is genuinely gone
+from what you paste — worth knowing before you screenshot something with a
+token in it.
 
-`⌘S` opens a save panel and writes a PNG wherever you point it, then leaves the
-window open so you can keep annotating or save a second copy elsewhere. It
-always opens in `~/Downloads`.
-
-Every result you copy is also written to `~/Pictures/aishots/` automatically —
-a fallback for targets that take a file but not a pasteboard image, and a
-record of shots you only pasted.
+Every image you copy is also archived to `~/Pictures/aishots/`, as a fallback
+for targets that take a file but not a pasteboard image.
 
 ## Install
 
 ```sh
+git clone <this repo> && cd aishot
 ./scripts/install.sh
 ```
 
 Builds, bundles `AIShot.app` into `~/Applications`, and drops a Raycast script
-command in `~/.raycast-scripts`. Add that folder under Raycast → Extensions →
-Script Directory, then bind a hotkey to "Annotate Clipboard Screenshot".
+command in `~/.raycast-scripts`. Add that folder under **Raycast → Settings →
+Extensions → + → Add Script Directory**, then bind a hotkey to *Annotate
+Clipboard Screenshot*.
 
-Shortcuts.app or skhd work equally well — anything that can run
-`open -a ~/Applications/AIShot.app`.
+Anything that can run `open -a ~/Applications/AIShot.app` works just as well —
+Shortcuts.app, skhd, an Automator quick action.
+
+Requires macOS 13+ and the Swift toolchain from Xcode or the Command Line
+Tools. No dependencies, no package manager, nothing at runtime.
+
+## Why it does not take the screenshot itself
+
+Screen capture needs a TCC grant, and a binary run from a terminal inherits the
+*terminal's* grant — so behaviour differs between development and the installed
+app, on exactly the kind of managed machine where you least want to debug it.
+
+Handing capture to the OS removes that surface completely. `⌃⇧⌘4` is already
+muscle memory, already permitted, and already handles multiple displays, Stage
+Manager and Retina scaling correctly. The app starts from the clipboard.
 
 ## Develop
 
 ```sh
-swift build          # app
-./scripts/test.sh    # core tests (needs Xcode's toolchain for XCTest)
+swift build           # the app
+./scripts/test.sh     # core tests (needs Xcode's toolchain for XCTest)
+./scripts/install.sh  # build, bundle, install, wire up Raycast
 ```
 
 `AIShotCore` holds the annotation model, the coordinate transform and the
 renderer, with no window code — that is where the tests live. `aishot` is the
 AppKit shell around it.
 
-Annotations are stored in **image pixel coordinates**, never view points, and
-one `Renderer.draw` call renders both the on-screen canvas and the exported
-PNG. That is what keeps the editor WYSIWYG on a Retina display and the output
-at full source resolution.
+The decision the rest of the code hangs off: **annotations are stored in image
+pixel coordinates, and one `Renderer.draw` renders both the on-screen canvas
+and the exported PNG.** The preview cannot drift from the output, because it is
+the output at a different scale. Retina screenshots survive the round trip at
+full resolution.
+
+The example image above is generated by `scripts/make-readme-assets.swift`
+using that same renderer, so the README cannot advertise markup the app does
+not actually draw.
+
+See [`docs/design.md`](docs/design.md) for the rest.
