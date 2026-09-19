@@ -56,21 +56,65 @@ for targets that take a file but not a pasteboard image.
 
 ## Install
 
+### Download a release
+
+1. Grab the latest `AIShot-*.zip` from
+   [**Releases**](https://github.com/dlomibao/aishot/releases/latest) and unzip it.
+2. Drag `AIShot.app` into `~/Applications` (or `/Applications`).
+3. **Remove the download quarantine.** Skip this and macOS will refuse to open
+   the app:
+
+   ```sh
+   xattr -dr com.apple.quarantine ~/Applications/AIShot.app
+   ```
+
+4. [Bind a hotkey](#bind-a-hotkey).
+
+> **Why step 3?** The app is not signed with an Apple Developer ID, which costs
+> $99/year. macOS quarantines anything downloaded from the internet and, for
+> unsigned apps, reports it as damaged or unverifiable rather than saying what
+> is actually wrong. The command above clears the quarantine flag. If you would
+> rather not run it, build from source — that path never gets quarantined.
+>
+> You can also go to **System Settings → Privacy & Security** and click
+> **Open Anyway** after the first blocked launch.
+
+Releases are **Apple Silicon only** and require macOS 13 or later.
+
+### Build from source
+
 ```sh
-git clone <this repo> && cd aishot
+git clone https://github.com/dlomibao/aishot.git
+cd aishot
 ./scripts/install.sh
 ```
 
 Builds, bundles `AIShot.app` into `~/Applications`, and drops a Raycast script
-command in `~/.raycast-scripts`. Add that folder under **Raycast → Settings →
-Extensions → + → Add Script Directory**, then bind a hotkey to *Annotate
-Clipboard Screenshot*.
+command into `~/.raycast-scripts`. Needs the Swift toolchain from Xcode or the
+Command Line Tools. No dependencies, nothing at runtime.
 
-Anything that can run `open -a ~/Applications/AIShot.app` works just as well —
-Shortcuts.app, skhd, an Automator quick action.
+### Bind a hotkey
 
-Requires macOS 13+ and the Swift toolchain from Xcode or the Command Line
-Tools. No dependencies, no package manager, nothing at runtime.
+The app deliberately has no hotkey of its own — it is launched by whatever you
+already use.
+
+**Raycast** — Settings → **Extensions** → **+** → **Add Script Directory** →
+choose `~/.raycast-scripts`, then set a hotkey on *Annotate Clipboard
+Screenshot*. `./scripts/install.sh` puts the script there for you; if you
+installed from a release, copy
+[`raycast/annotate-clipboard.sh`](raycast/annotate-clipboard.sh) into that
+folder yourself.
+
+**Shortcuts.app** — new Shortcut → *Run Shell Script* →
+`open -a ~/Applications/AIShot.app` → assign a keyboard shortcut.
+
+**skhd** — add to `~/.skhdrc`:
+
+```
+cmd + shift + ctrl - 5 : open -a ~/Applications/AIShot.app
+```
+
+Anything that can run `open -a ~/Applications/AIShot.app` works.
 
 ## Why it does not take the screenshot itself
 
@@ -88,6 +132,13 @@ Manager and Retina scaling correctly. The app starts from the clipboard.
 swift build           # the app
 ./scripts/test.sh     # core tests (needs Xcode's toolchain for XCTest)
 ./scripts/install.sh  # build, bundle, install, wire up Raycast
+```
+
+CI builds, tests and bundles on every push. Tagging `v*` builds a release and
+publishes the zip automatically:
+
+```sh
+git tag v0.2.0 && git push origin v0.2.0
 ```
 
 `AIShotCore` holds the annotation model, the coordinate transform and the

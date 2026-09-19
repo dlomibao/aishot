@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: swift --version
+
+      - name: Build
+        run: swift build -c release
+
+      # The runner has a licensed Xcode, so XCTest is available here even when
+      # it is not on a machine with only the Command Line Tools installed.
+      - name: Test
+        run: swift test
+
+      - name: Bundle the app
+        run: ./scripts/bundle.sh release
+
+      - name: Verify the bundle is well formed
+        run: |
+          set -euo pipefail
+          test -x build/AIShot.app/Contents/MacOS/aishot
+          test -f build/AIShot.app/Contents/Resources/AIShot.icns
+          test -f build/AIShot.app/Contents/PkgInfo
+          codesign --verify --deep --strict build/AIShot.app
+          echo "bundle OK"

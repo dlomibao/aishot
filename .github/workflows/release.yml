@@ -1,0 +1,95 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build, e.g. v0.2.0"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        run: |
+          set -euo pipefail
+          RAW="${{ github.event.inputs.version || github.ref_name }}"
+          echo "tag=$RAW" >> "$GITHUB_OUTPUT"
+          echo "number=${RAW#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and test
+        run: |
+          swift build -c release
+          swift test
+
+      - name: Bundle the app
+        env:
+          VERSION: ${{ steps.version.outputs.number }}
+        run: ./scripts/bundle.sh release
+
+      - name: Package
+        id: package
+        run: |
+          set -euo pipefail
+          NAME="AIShot-${{ steps.version.outputs.tag }}-arm64.zip"
+          # ditto preserves the bundle's signature and resource forks; plain zip
+          # can corrupt a .app.
+          ditto -c -k --keepParent --sequesterRsrc build/AIShot.app "$NAME"
+          shasum -a 256 "$NAME" | tee checksum.txt
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "sha=$(shasum -a 256 "$NAME" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Write release notes
+        run: |
+          cat > notes.md <<'EOF'
+          Mark up the screenshot on your clipboard and paste it into an AI coding session.
+
+          ## Install
+
+          1. Download `${{ steps.package.outputs.name }}` below and unzip it.
+          2. Move `AIShot.app` to `~/Applications` (or `/Applications`).
+          3. **Remove the download quarantine**, otherwise macOS refuses to open it:
+
+             ```sh
+             xattr -dr com.apple.quarantine ~/Applications/AIShot.app
+             ```
+
+          4. Bind a hotkey to `open -a ~/Applications/AIShot.app` in Raycast,
+             Shortcuts or skhd.
+
+          The app is **not signed with an Apple Developer ID**, which is why step 3
+          is needed. If you would rather not run that command, build from source
+          instead — `./scripts/install.sh` does the whole thing.
+
+          Requires macOS 13 or later on **Apple Silicon**.
+
+          ## Use
+
+          `⌃⇧⌘4` to grab a region, your hotkey to open the editor, mark it up,
+          `⏎` to copy the annotated image back to the clipboard.
+
+          ---
+
+          `sha256  ${{ steps.package.outputs.sha }}`
+          EOF
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # --target rather than --verify-tag, so a manual dispatch can cut a
+          # release for a version that has no tag yet.
+          gh release create "${{ steps.version.outputs.tag }}" \
+            "${{ steps.package.outputs.name }}" \
+            --title "aishot ${{ steps.version.outputs.tag }}" \
+            --notes-file notes.md \
+            --target "$GITHUB_SHA"
