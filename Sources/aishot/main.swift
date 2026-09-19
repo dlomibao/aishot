@@ -86,6 +86,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         appItem.submenu = appMenu
         main.addItem(appItem)
 
+        let fileItem = NSMenuItem()
+        let fileMenu = NSMenu(title: "File")
+        fileMenu.addItem(withTitle: "Save As…", action: #selector(saveAs), keyEquivalent: "s")
+        fileItem.submenu = fileMenu
+        main.addItem(fileItem)
+
         let editItem = NSMenuItem()
         let editMenu = NSMenu(title: "Edit")
         editMenu.addItem(withTitle: "Undo", action: #selector(undoAnnotation), keyEquivalent: "z")
@@ -106,6 +112,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func pasteFromClipboard() {
         controller?.pasteAction()
+    }
+
+    @objc private func saveAs() {
+        controller?.saveAction()
     }
 }
 

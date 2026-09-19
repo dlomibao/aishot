@@ -96,9 +96,16 @@ the head does not thicken or show a seam.
 **Badge numbers derive from how many badges are currently placed**, so undo
 frees a number instead of leaving a gap.
 
-**The window has a minimum width.** It used to size purely to the image, so a
-narrow crop produced a narrow window with a clipped toolbar. The canvas is now
-centred inside a window at least as wide as the chrome needs.
+**The window floors at a measured width, not a constant.** It used to size
+purely to the image, so a narrow crop produced a window with a clipped toolbar.
+The floor now comes from the toolbar's own `fittingSize`, because a hardcoded
+number goes stale the moment a button is added — the first guess of 660pt was
+already 200pt short. Keyboard hints live in tooltips rather than button titles
+for the same reason: the titles set the floor, and a small crop should not open
+a needlessly wide window.
+
+**Save is not a terminal action.** Copy closes the editor; Save leaves it open,
+so you can save a PNG and carry on annotating or save a second copy elsewhere.
 
 **Activation policy is `.regular`, not `.accessory`.** An accessory app gets no
 menu bar, and without a menu bar the standard `⌘Z` key equivalent does not fire.

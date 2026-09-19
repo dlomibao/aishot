@@ -15,9 +15,7 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
 
     private static let rowHeight: CGFloat = 38
     private static let toolbarHeight: CGFloat = rowHeight * 2
-    /// The chrome needs more width than a small crop does, so the window floors
-    /// at a width the toolbar actually fits in and centres the canvas.
-    private static let minimumWidth: CGFloat = 660
+    private static let barMargin: CGFloat = 10
 
     init(image: CGImage, onFinish: @escaping @MainActor (Data?) -> Void) {
         self.onFinish = onFinish
@@ -32,9 +30,8 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
 
         canvas = CanvasView(image: image, frame: NSRect(origin: .zero, size: canvasSize))
 
-        let windowWidth = max(canvasSize.width, Self.minimumWidth)
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: windowWidth, height: canvasSize.height + Self.toolbarHeight),
+            contentRect: NSRect(x: 0, y: 0, width: canvasSize.width, height: canvasSize.height + Self.toolbarHeight),
             styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = "aishot — \(image.width)×\(image.height)"
         window.isReleasedWhenClosed = false
@@ -52,22 +49,29 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
     required init?(coder: NSCoder) { fatalError("not used") }
 
     private func buildContentView(canvasSize: CGSize) {
-        guard let content = window?.contentView else { return }
-        let width = content.bounds.width
+        guard let window, let content = window.contentView else { return }
+
+        let bar = NSVisualEffectView()
+        bar.material = .titlebar
+        bar.blendingMode = .withinWindow
+        content.addSubview(bar)
+        buildToolRow(in: bar)
+        buildStyleRow(in: bar)
+
+        // Measure the chrome rather than hardcoding a floor: a small crop would
+        // otherwise produce a window too narrow to show its own toolbar, and the
+        // right number changes every time a button is added.
+        let chromeWidth = max(toolbar.fittingSize.width, styleBar.fittingSize.width) + Self.barMargin * 2
+        let width = max(canvasSize.width, chromeWidth).rounded()
+        window.setContentSize(NSSize(width: width, height: canvasSize.height + Self.toolbarHeight))
 
         canvas.frame = NSRect(x: ((width - canvasSize.width) / 2).rounded(), y: 0,
                               width: canvasSize.width, height: canvasSize.height)
         content.addSubview(canvas)
 
-        let bar = NSVisualEffectView(frame: NSRect(x: 0, y: canvasSize.height,
-                                                   width: width, height: Self.toolbarHeight))
+        bar.frame = NSRect(x: 0, y: canvasSize.height, width: width, height: Self.toolbarHeight)
         bar.autoresizingMask = [.width, .minYMargin]
-        bar.material = .titlebar
-        bar.blendingMode = .withinWindow
-        content.addSubview(bar)
-
-        buildToolRow(in: bar)
-        buildStyleRow(in: bar)
+        window.center()
     }
 
     private func buildToolRow(in bar: NSView) {
@@ -76,38 +80,47 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
         toolbar.translatesAutoresizingMaskIntoConstraints = false
         bar.addSubview(toolbar)
         NSLayoutConstraint.activate([
-            toolbar.leadingAnchor.constraint(equalTo: bar.leadingAnchor, constant: 10),
-            toolbar.trailingAnchor.constraint(lessThanOrEqualTo: bar.trailingAnchor, constant: -10),
+            toolbar.leadingAnchor.constraint(equalTo: bar.leadingAnchor, constant: Self.barMargin),
+            toolbar.trailingAnchor.constraint(lessThanOrEqualTo: bar.trailingAnchor, constant: -Self.barMargin),
             toolbar.topAnchor.constraint(equalTo: bar.topAnchor, constant: 5),
             toolbar.heightAnchor.constraint(equalToConstant: Self.rowHeight - 10),
         ])
 
         for tool in Tool.allCases {
-            let button = NSButton(title: "\(tool.label)  \(tool.rawValue)", target: self, action: #selector(toolTapped(_:)))
+            let button = NSButton(title: tool.label, target: self, action: #selector(toolTapped(_:)))
             button.bezelStyle = .rounded
             button.tag = tool.rawValue
+            button.toolTip = "\(tool.label) — press \(tool.rawValue)"
             toolButtons[tool] = button
             toolbar.addArrangedSubview(button)
         }
 
         toolbar.addArrangedSubview(NSView())
 
-        let reload = NSButton(title: "Reload  ⌘V", target: self, action: #selector(pasteAction))
+        let reload = NSButton(title: "Reload", target: self, action: #selector(pasteAction))
         reload.bezelStyle = .rounded
-        reload.toolTip = "Load the image currently on the clipboard"
+        reload.toolTip = "⌘V — load the image currently on the clipboard"
         toolbar.addArrangedSubview(reload)
 
-        undoButton = NSButton(title: "Undo  ⌘Z", target: self, action: #selector(undoTapped))
+        undoButton = NSButton(title: "Undo", target: self, action: #selector(undoTapped))
         undoButton.bezelStyle = .rounded
+        undoButton.toolTip = "⌘Z — remove the last annotation"
         undoButton.isEnabled = false
         toolbar.addArrangedSubview(undoButton)
 
-        let cancel = NSButton(title: "Cancel  esc", target: self, action: #selector(cancelTapped))
+        let save = NSButton(title: "Save…", target: self, action: #selector(saveAction))
+        save.bezelStyle = .rounded
+        save.toolTip = "⌘S — write a PNG somewhere and keep editing"
+        toolbar.addArrangedSubview(save)
+
+        let cancel = NSButton(title: "Cancel", target: self, action: #selector(cancelTapped))
         cancel.bezelStyle = .rounded
+        cancel.toolTip = "esc — discard and close, leaving the clipboard alone"
         toolbar.addArrangedSubview(cancel)
 
         let done = NSButton(title: "Copy  ⏎", target: self, action: #selector(doneTapped))
         done.bezelStyle = .rounded
+        done.toolTip = "⏎ — copy the annotated image and close"
         done.keyEquivalent = "\r"
         toolbar.addArrangedSubview(done)
     }
@@ -118,8 +131,8 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
         styleBar.translatesAutoresizingMaskIntoConstraints = false
         bar.addSubview(styleBar)
         NSLayoutConstraint.activate([
-            styleBar.leadingAnchor.constraint(equalTo: bar.leadingAnchor, constant: 10),
-            styleBar.trailingAnchor.constraint(lessThanOrEqualTo: bar.trailingAnchor, constant: -10),
+            styleBar.leadingAnchor.constraint(equalTo: bar.leadingAnchor, constant: Self.barMargin),
+            styleBar.trailingAnchor.constraint(lessThanOrEqualTo: bar.trailingAnchor, constant: -Self.barMargin),
             styleBar.bottomAnchor.constraint(equalTo: bar.bottomAnchor, constant: -5),
         ])
 
@@ -228,6 +241,41 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
     }
 
     func undoTappedFromMenu() { canvas.undo() }
+
+    /// Unlike Copy, saving is not a terminal action — the window stays up so you
+    /// can keep annotating or save a second copy elsewhere.
+    @objc func saveAction() {
+        guard let png = canvas.exportPNG() else {
+            presentError("Could not render the image.")
+            return
+        }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.png]
+        panel.nameFieldStringValue = OutputFile.suggestedName()
+        panel.directoryURL = Preferences.lastSaveDirectory ?? OutputFile.directory
+        panel.canCreateDirectories = true
+        panel.isExtensionHidden = false
+
+        guard let window else { return }
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let url = panel.url else { return }
+            do {
+                try png.write(to: url)
+                Preferences.lastSaveDirectory = url.deletingLastPathComponent()
+                window.subtitle = "Saved \(url.lastPathComponent)"
+            } catch {
+                self?.presentError("Could not save to \(url.path): \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func presentError(_ message: String) {
+        let alert = NSAlert()
+        alert.messageText = "Save failed"
+        alert.informativeText = message
+        alert.alertStyle = .warning
+        if let window { alert.beginSheetModal(for: window) } else { alert.runModal() }
+    }
 
     @objc private func cancelTapped() { finish(with: nil) }
 

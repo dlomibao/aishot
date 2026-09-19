@@ -63,4 +63,17 @@ enum Preferences {
         get { SizeClass(rawValue: UserDefaults.standard.string(forKey: sizeKey) ?? "") ?? .medium }
         set { UserDefaults.standard.set(newValue.rawValue, forKey: sizeKey) }
     }
+
+    /// Reopen the save panel where it was last used rather than at a fixed
+    /// default, since saves tend to cluster in one project folder.
+    static var lastSaveDirectory: URL? {
+        get {
+            guard let path = UserDefaults.standard.string(forKey: saveDirKey) else { return nil }
+            let url = URL(fileURLWithPath: path)
+            return FileManager.default.fileExists(atPath: url.path) ? url : nil
+        }
+        set { UserDefaults.standard.set(newValue?.path, forKey: saveDirKey) }
+    }
+
+    private static let saveDirKey = "lastSaveDirectory"
 }

@@ -34,13 +34,17 @@ enum OutputFile {
     static let directory = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Pictures/aishots", isDirectory: true)
 
+    static func suggestedName(at date: Date = Date()) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        return "aishot-\(formatter.string(from: date)).png"
+    }
+
     /// A disk copy is the fallback for targets that will not take a pasteboard
     /// image but will take a path or a drag.
     @discardableResult
     static func save(png: Data) -> URL? {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyyMMdd-HHmmss"
-        let url = directory.appendingPathComponent("aishot-\(formatter.string(from: Date())).png")
+        let url = directory.appendingPathComponent(suggestedName())
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             try png.write(to: url)
