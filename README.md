@@ -11,7 +11,7 @@
 
 </div>
 
-![Example: a settings pane annotated with a redaction, numbered badges, a box, a note and an arrow](docs/images/example.png)
+![aishot annotating a terminal screenshot: an arrow and a box pointing at a long-running agent, with a typed note](docs/images/screenshot.png)
 
 macOS already takes the screenshot. This is the missing second half — arrows,
 boxes, text, numbered steps and redaction on top of whatever image is on the
@@ -48,6 +48,8 @@ something.
 it was drawn with, so a yellow note can sit beside a red arrow. Markup is sized
 in screen points, so it looks the same on a thin toolbar strip as on a
 full-window grab. Your last choice is remembered between launches.
+
+![The same tools on a settings pane: a redaction, two numbered badges, a box, a note and an arrow](docs/images/example.png)
 
 **Redaction is destructive.** It writes solid black into the output pixels
 rather than laying an overlay on top, so the original content is genuinely gone
