@@ -30,6 +30,9 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <key>CFBundleExecutable</key><string>aishot</string>
   <key>CFBundleIconFile</key><string>AIShot</string>
   <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleSignature</key><string>????</string>
+  <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+  <key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
   <key>CFBundleShortVersionString</key><string>0.1.0</string>
   <key>CFBundleVersion</key><string>1</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
@@ -37,6 +40,10 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 </dict>
 </plist>
 PLIST
+
+# PkgInfo is legacy but every app bundle on disk has one, and Spotlight's
+# importer is happier typing the bundle when it is present.
+printf 'APPL????' > "$APP/Contents/PkgInfo"
 
 # Ad-hoc signature: unsigned bundles get killed by Gatekeeper on first launch.
 codesign --force --sign - "$APP" >/dev/null 2>&1 || echo "warning: ad-hoc codesign failed"
