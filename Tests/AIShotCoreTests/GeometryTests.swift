@@ -51,15 +51,17 @@ final class CanvasTransformTests: XCTestCase {
 final class AnnotationDocumentTests: XCTestCase {
     func testBadgeNumbersIncrementInOrderOfPlacement() {
         var doc = AnnotationDocument()
-        doc.add(.badge(center: .zero, number: doc.nextBadgeNumber))
-        doc.add(.badge(center: .zero, number: doc.nextBadgeNumber))
+        let style = Style.scaled(to: CGSize(width: 100, height: 100))
+        doc.add(.badge(center: .zero, number: doc.nextBadgeNumber), style: style)
+        doc.add(.badge(center: .zero, number: doc.nextBadgeNumber), style: style)
         XCTAssertEqual(doc.nextBadgeNumber, 3)
     }
 
     func testUndoRemovesTheMostRecentAnnotation() {
         var doc = AnnotationDocument()
-        doc.add(.box(CGRect(x: 0, y: 0, width: 10, height: 10)))
-        doc.add(.box(CGRect(x: 5, y: 5, width: 10, height: 10)))
+        let style = Style.scaled(to: CGSize(width: 100, height: 100))
+        doc.add(.box(CGRect(x: 0, y: 0, width: 10, height: 10)), style: style)
+        doc.add(.box(CGRect(x: 5, y: 5, width: 10, height: 10)), style: style)
         doc.undo()
         XCTAssertEqual(doc.annotations.count, 1)
     }
@@ -72,8 +74,9 @@ final class AnnotationDocumentTests: XCTestCase {
 
     func testUndoingABadgeFreesItsNumberForReuse() {
         var doc = AnnotationDocument()
-        doc.add(.badge(center: .zero, number: doc.nextBadgeNumber))
-        doc.add(.badge(center: .zero, number: doc.nextBadgeNumber))
+        let style = Style.scaled(to: CGSize(width: 100, height: 100))
+        doc.add(.badge(center: .zero, number: doc.nextBadgeNumber), style: style)
+        doc.add(.badge(center: .zero, number: doc.nextBadgeNumber), style: style)
         doc.undo()
         XCTAssertEqual(doc.nextBadgeNumber, 2)
     }

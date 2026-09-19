@@ -32,8 +32,20 @@ public enum Tool: Int, CaseIterable, Sendable {
     }
 }
 
+/// A shape carries the style it was drawn with, so changing the colour affects
+/// what you draw next rather than restyling the whole image.
+public struct StyledAnnotation: Sendable {
+    public var shape: Annotation
+    public var style: Style
+
+    public init(_ shape: Annotation, style: Style) {
+        self.shape = shape
+        self.style = style
+    }
+}
+
 public struct AnnotationDocument: Sendable {
-    public private(set) var annotations: [Annotation] = []
+    public private(set) var annotations: [StyledAnnotation] = []
 
     public init() {}
 
@@ -41,13 +53,13 @@ public struct AnnotationDocument: Sendable {
     /// frees its number again rather than leaving a gap.
     public var nextBadgeNumber: Int {
         annotations.reduce(1) { count, annotation in
-            if case .badge = annotation { return count + 1 }
+            if case .badge = annotation.shape { return count + 1 }
             return count
         }
     }
 
-    public mutating func add(_ annotation: Annotation) {
-        annotations.append(annotation)
+    public mutating func add(_ shape: Annotation, style: Style) {
+        annotations.append(StyledAnnotation(shape, style: style))
     }
 
     public mutating func undo() {

@@ -65,6 +65,23 @@ resolution.
 Core has no window code, which is why it is testable: every renderer test draws
 onto a known canvas and asserts pixel colours.
 
+## Style is per-annotation
+
+`Renderer.draw` walks `[StyledAnnotation]` and uses each item's own style rather
+than taking one style for the whole call. A global style would have meant that
+changing the colour restyled everything already drawn, which defeats the point
+of a colour picker — you want a yellow box next to a red arrow.
+
+`SizeClass` multiplies the image-derived base rather than setting fixed pixel
+counts, so "large" stays relative: a large stroke on a 300px crop is still
+lighter than a small stroke on a 4K screenshot.
+
+Redaction ignores the selected colour. It is a privacy operation, not markup,
+and a "blue redaction" would be a misleading thing to offer.
+
+Last colour and size persist in `UserDefaults`. The app quits after every
+screenshot, so without persistence you would re-pick your preference each time.
+
 ## Decisions
 
 **Redaction uses `.copy` blend mode.** A composited black rect would still be
@@ -78,6 +95,10 @@ the head does not thicken or show a seam.
 
 **Badge numbers derive from how many badges are currently placed**, so undo
 frees a number instead of leaving a gap.
+
+**The window has a minimum width.** It used to size purely to the image, so a
+narrow crop produced a narrow window with a clipped toolbar. The canvas is now
+centred inside a window at least as wide as the chrome needs.
 
 **Activation policy is `.regular`, not `.accessory`.** An accessory app gets no
 menu bar, and without a menu bar the standard `⌘Z` key equivalent does not fire.

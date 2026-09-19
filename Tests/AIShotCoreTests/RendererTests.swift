@@ -10,11 +10,16 @@ private struct Probe {
     private let pixels: [UInt8]
 
     init(annotations: [Annotation], width: Int = 200, height: Int = 200) throws {
+        let style = Style.scaled(to: CGSize(width: width, height: height))
+        try self.init(styled: annotations.map { StyledAnnotation($0, style: style) },
+                      width: width, height: height)
+    }
+
+    init(styled: [StyledAnnotation], width: Int = 200, height: Int = 200) throws {
         self.width = width
         self.height = height
         let base = try XCTUnwrap(Probe.whiteImage(width: width, height: height))
-        let style = Style.scaled(to: CGSize(width: width, height: height))
-        let rendered = try XCTUnwrap(Renderer.render(base: base, annotations: annotations, style: style))
+        let rendered = try XCTUnwrap(Renderer.render(base: base, annotations: styled))
         self.pixels = try XCTUnwrap(Probe.rgbaBytes(of: rendered))
     }
 
@@ -25,6 +30,14 @@ private struct Probe {
 
     var isAnyPixelRed: Bool {
         stride(from: 0, to: pixels.count, by: 4).contains { pixels[$0] > 180 && pixels[$0 + 1] < 90 }
+    }
+
+    func pixelCount(inRect rect: CGRect, where matches: ((UInt8, UInt8, UInt8, UInt8)) -> Bool) -> Int {
+        var count = 0
+        for y in Int(rect.minY)..<Int(rect.maxY) {
+            for x in Int(rect.minX)..<Int(rect.maxX) where matches(color(x: x, y: y)) { count += 1 }
+        }
+        return count
     }
 
     func redPixelCount(inRect rect: CGRect) -> Int {
@@ -64,8 +77,7 @@ private struct Probe {
 final class RendererTests: XCTestCase {
     func testOutputKeepsTheSourcePixelDimensions() throws {
         let base = try XCTUnwrap(Probe.whiteImage(width: 640, height: 480))
-        let out = try XCTUnwrap(Renderer.render(base: base, annotations: [],
-                                                style: .scaled(to: CGSize(width: 640, height: 480))))
+        let out = try XCTUnwrap(Renderer.render(base: base, annotations: []))
         XCTAssertEqual(out.width, 640)
         XCTAssertEqual(out.height, 480)
     }
@@ -111,8 +123,9 @@ final class RendererTests: XCTestCase {
         ctx.setFillColor(CGColor(red: 0.5, green: 0.5, blue: 0.5, alpha: 1))
         ctx.fill(CGRect(x: 0, y: 0, width: 100, height: 100))
         let grey = try XCTUnwrap(ctx.makeImage())
-        let out = try XCTUnwrap(Renderer.render(base: grey, annotations: [.redact(CGRect(x: 10, y: 10, width: 50, height: 50))],
-                                                style: .scaled(to: CGSize(width: 100, height: 100))))
+        let redaction = StyledAnnotation(.redact(CGRect(x: 10, y: 10, width: 50, height: 50)),
+                                         style: .scaled(to: CGSize(width: 100, height: 100)))
+        let out = try XCTUnwrap(Renderer.render(base: grey, annotations: [redaction]))
         let bytes = try XCTUnwrap(Probe.rgbaBytes(of: out))
         let i = ((100 - 1 - 30) * 100 + 30) * 4
         XCTAssertEqual(bytes[i], 0)
@@ -161,8 +174,9 @@ final class RendererTests: XCTestCase {
 
     func testPNGEncodingProducesDecodableDataOfTheSameSize() throws {
         let base = try XCTUnwrap(Probe.whiteImage(width: 120, height: 90))
-        let data = try XCTUnwrap(Renderer.pngData(base: base, annotations: [.box(CGRect(x: 10, y: 10, width: 50, height: 50))],
-                                                  style: .scaled(to: CGSize(width: 120, height: 90))))
+        let boxed = StyledAnnotation(.box(CGRect(x: 10, y: 10, width: 50, height: 50)),
+                                     style: .scaled(to: CGSize(width: 120, height: 90)))
+        let data = try XCTUnwrap(Renderer.pngData(base: base, annotations: [boxed]))
         XCTAssertGreaterThan(data.count, 0)
         let source = try XCTUnwrap(CGImageSourceCreateWithData(data as CFData, nil))
         let decoded = try XCTUnwrap(CGImageSourceCreateImageAtIndex(source, 0, nil))
@@ -177,5 +191,85 @@ final class RendererTests: XCTestCase {
             .redact(CGRect(x: 30, y: 30, width: 120, height: 120)),
         ])
         XCTAssertEqual(probe.redPixelCount(inRect: CGRect(x: 30, y: 30, width: 120, height: 120)), 0)
+    }
+}
+
+
+final class PerAnnotationStyleTests: XCTestCase {
+    private func style(_ color: MarkupColor, _ size: SizeClass = .medium) -> Style {
+        .scaled(to: CGSize(width: 200, height: 200), color: color, size: size)
+    }
+
+    func testTwoAnnotationsKeepTheirOwnColours() throws {
+        let probe = try Probe(styled: [
+            StyledAnnotation(.box(CGRect(x: 20, y: 20, width: 60, height: 60)), style: style(.red)),
+            StyledAnnotation(.box(CGRect(x: 110, y: 110, width: 60, height: 60)), style: style(.blue)),
+        ])
+        let left = CGRect(x: 15, y: 15, width: 70, height: 70)
+        let right = CGRect(x: 105, y: 105, width: 70, height: 70)
+
+        let isRed: ((UInt8, UInt8, UInt8, UInt8)) -> Bool = { $0.0 > 180 && $0.2 < 90 }
+        let isBlue: ((UInt8, UInt8, UInt8, UInt8)) -> Bool = { $0.2 > 180 && $0.0 < 90 }
+
+        XCTAssertGreaterThan(probe.pixelCount(inRect: left, where: isRed), 0)
+        XCTAssertEqual(probe.pixelCount(inRect: left, where: isBlue), 0,
+                       "the red box must not pick up the blue box's colour")
+        XCTAssertGreaterThan(probe.pixelCount(inRect: right, where: isBlue), 0)
+        XCTAssertEqual(probe.pixelCount(inRect: right, where: isRed), 0)
+    }
+
+    func testRedactionIgnoresTheSelectedColour() throws {
+        let probe = try Probe(styled: [
+            StyledAnnotation(.redact(CGRect(x: 40, y: 40, width: 60, height: 60)), style: style(.blue)),
+        ])
+        let inside = probe.color(x: 70, y: 70)
+        XCTAssertEqual(inside.r, 0)
+        XCTAssertEqual(inside.b, 0)
+    }
+
+    func testLargerSizeClassDrawsAHeavierStroke() {
+        let size = CGSize(width: 800, height: 600)
+        let small = Style.scaled(to: size, size: .small)
+        let medium = Style.scaled(to: size, size: .medium)
+        let large = Style.scaled(to: size, size: .large)
+        XCTAssertLessThan(small.lineWidth, medium.lineWidth)
+        XCTAssertLessThan(medium.lineWidth, large.lineWidth)
+        XCTAssertLessThan(small.fontSize, medium.fontSize)
+        XCTAssertLessThan(medium.fontSize, large.fontSize)
+    }
+
+    func testSizeClassStillScalesWithTheImage() {
+        // "Large" is relative to the image, so a small crop's large stroke
+        // should stay under a big screenshot's small stroke.
+        let cropLarge = Style.scaled(to: CGSize(width: 200, height: 200), size: .large)
+        let hugeSmall = Style.scaled(to: CGSize(width: 4000, height: 3000), size: .small)
+        XCTAssertLessThan(cropLarge.lineWidth, hugeSmall.lineWidth)
+    }
+
+    func testEveryPaletteColourIsDistinctAndNamed() {
+        let names = Set(MarkupColor.palette.map(\.name))
+        XCTAssertEqual(names.count, MarkupColor.palette.count)
+        for color in MarkupColor.palette {
+            XCTAssertEqual(MarkupColor.named(color.name), color)
+        }
+    }
+
+    func testCyclingColoursVisitsEveryPaletteEntryAndWrapsAround() {
+        var seen: [MarkupColor] = []
+        var current = MarkupColor.red
+        for _ in MarkupColor.palette.indices {
+            seen.append(current)
+            current = current.next
+        }
+        XCTAssertEqual(seen.count, MarkupColor.palette.count)
+        XCTAssertEqual(Set(seen.map(\.name)).count, MarkupColor.palette.count)
+        XCTAssertEqual(current, .red, "cycling all the way round should return to the start")
+    }
+
+    func testSizeSteppingClampsAtBothEnds() {
+        XCTAssertEqual(SizeClass.small.smaller, .small)
+        XCTAssertEqual(SizeClass.large.larger, .large)
+        XCTAssertEqual(SizeClass.small.larger, .medium)
+        XCTAssertEqual(SizeClass.large.smaller, .medium)
     }
 }

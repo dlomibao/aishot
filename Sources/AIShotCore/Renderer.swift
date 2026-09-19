@@ -9,10 +9,11 @@ import UniformTypeIdentifiers
 /// WYSIWYG: the preview is this same code running at a different scale.
 public enum Renderer {
 
-    public static func draw(_ annotations: [Annotation], in ctx: CGContext, style: Style) {
+    public static func draw(_ annotations: [StyledAnnotation], in ctx: CGContext) {
         for annotation in annotations {
+            let style = annotation.style
             ctx.saveGState()
-            switch annotation {
+            switch annotation.shape {
             case let .arrow(from, to):     drawArrow(from: from, to: to, in: ctx, style: style)
             case let .box(rect):           drawBox(rect, in: ctx, style: style)
             case let .text(origin, string): drawText(string, at: origin, in: ctx, style: style)
@@ -23,19 +24,19 @@ public enum Renderer {
         }
     }
 
-    public static func render(base: CGImage, annotations: [Annotation], style: Style) -> CGImage? {
+    public static func render(base: CGImage, annotations: [StyledAnnotation]) -> CGImage? {
         let width = base.width, height = base.height
         guard let ctx = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
                                   bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
                                   bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
         ctx.interpolationQuality = .high
         ctx.draw(base, in: CGRect(x: 0, y: 0, width: width, height: height))
-        draw(annotations, in: ctx, style: style)
+        draw(annotations, in: ctx)
         return ctx.makeImage()
     }
 
-    public static func pngData(base: CGImage, annotations: [Annotation], style: Style) -> Data? {
-        guard let image = render(base: base, annotations: annotations, style: style) else { return nil }
+    public static func pngData(base: CGImage, annotations: [StyledAnnotation]) -> Data? {
+        guard let image = render(base: base, annotations: annotations) else { return nil }
         return pngData(of: image)
     }
 

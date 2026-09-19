@@ -16,6 +16,8 @@ clipboard — then the annotated PNG replaces it.
 | Key | |
 |---|---|
 | `1`–`5` | arrow, box, text, number badge, redact |
+| `C` | cycle colour |
+| `[` `]` | smaller / larger stroke and text |
 | `⌘V` | load the screenshot now on the clipboard |
 | `⌘Z` | undo last annotation |
 | `⏎` | copy annotated image, quit |
@@ -29,7 +31,15 @@ Leave the window open and keep shooting: `⌃⇧⌘4` again, then `⌘V` (or the
 already drawn something it asks before discarding it. Inside a text field `⌘V`
 pastes text as usual.
 
-Redaction writes solid black into the output pixels rather than laying an
+Colour and size apply to what you draw **next** — each shape keeps the style it
+was drawn with, so you can put a yellow box beside a red arrow. Six swatches,
+picked to stay legible on light and dark screenshots, and one S/M/L control that
+scales stroke and text together. Size is relative to the image, so "large" on a
+4K grab and on a small crop both look large. Your last colour and size are
+remembered between launches.
+
+Redaction is always solid black regardless of the selected colour, and writes
+into the output pixels rather than laying an
 overlay on top, so the original content is genuinely gone from what you paste.
 
 Every result is also written to `~/Pictures/aishots/` as a fallback for targets

@@ -14,7 +14,6 @@ final class CanvasView: NSView {
     weak var delegate: CanvasViewDelegate?
 
     private let baseImage: CGImage
-    private let style: Style
     private var document = AnnotationDocument()
     private var dragStart: CGPoint?
     private var dragCurrent: CGPoint?
@@ -22,6 +21,20 @@ final class CanvasView: NSView {
 
     var tool: Tool = .arrow {
         didSet { commitPendingText() }
+    }
+
+    /// Applies to what you draw next; shapes already placed keep their own.
+    var color: MarkupColor = .red {
+        didSet { commitPendingText() }
+    }
+
+    var sizeClass: SizeClass = .medium {
+        didSet { commitPendingText() }
+    }
+
+    private var style: Style {
+        .scaled(to: CGSize(width: baseImage.width, height: baseImage.height),
+                color: color, size: sizeClass)
     }
 
     var canUndo: Bool { !document.isEmpty }
@@ -36,7 +49,6 @@ final class CanvasView: NSView {
 
     init(image: CGImage, frame: NSRect) {
         self.baseImage = image
-        self.style = .scaled(to: CGSize(width: image.width, height: image.height))
         super.init(frame: frame)
     }
 
@@ -54,7 +66,8 @@ final class CanvasView: NSView {
         ctx.saveGState()
         let factor = 1 / transform.scale
         ctx.scaleBy(x: factor, y: factor)
-        Renderer.draw(document.annotations + pendingAnnotation.map { [$0] }.orEmpty, in: ctx, style: style)
+        let pending = pendingAnnotation.map { [StyledAnnotation($0, style: style)] } ?? []
+        Renderer.draw(document.annotations + pending, in: ctx)
         ctx.restoreGState()
     }
 
@@ -79,7 +92,8 @@ final class CanvasView: NSView {
         case .text:
             beginTextEntry(at: point)
         case .badge:
-            document.add(.badge(center: transform.imagePoint(fromView: point), number: document.nextBadgeNumber))
+            document.add(.badge(center: transform.imagePoint(fromView: point), number: document.nextBadgeNumber),
+                         style: style)
             changed()
         default:
             dragStart = point
@@ -99,7 +113,7 @@ final class CanvasView: NSView {
         // Ignore stray clicks that produced a degenerate shape.
         if case let .box(rect) = annotation, rect.width < 2, rect.height < 2 { return }
         if case let .redact(rect) = annotation, rect.width < 2, rect.height < 2 { return }
-        document.add(annotation)
+        document.add(annotation, style: style)
         changed()
     }
 
@@ -141,7 +155,7 @@ final class CanvasView: NSView {
         field.removeFromSuperview()
         window?.makeFirstResponder(self)
         guard !string.isEmpty else { return }
-        document.add(.text(origin: transform.imagePoint(fromView: origin), string: string))
+        document.add(.text(origin: transform.imagePoint(fromView: origin), string: string), style: style)
         changed()
     }
 
@@ -167,15 +181,11 @@ final class CanvasView: NSView {
 
     func exportPNG() -> Data? {
         commitPendingText()
-        return Renderer.pngData(base: baseImage, annotations: document.annotations, style: style)
+        return Renderer.pngData(base: baseImage, annotations: document.annotations)
     }
 
     private func changed() {
         needsDisplay = true
         delegate?.canvasDidChange(self)
     }
-}
-
-private extension Optional where Wrapped == [Annotation] {
-    var orEmpty: [Annotation] { self ?? [] }
 }

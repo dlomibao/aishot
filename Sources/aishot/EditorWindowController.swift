@@ -5,12 +5,19 @@ import AppKit
 final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWindowDelegate {
     private let canvas: CanvasView
     private let toolbar = NSStackView()
+    private let styleBar = NSStackView()
     private var toolButtons: [Tool: NSButton] = [:]
+    private var swatches: [SwatchButton] = []
+    private var sizeControl: NSSegmentedControl!
     private var undoButton: NSButton!
     private let onFinish: @MainActor (Data?) -> Void
     var onRequestReload: (@MainActor () -> Void)?
 
-    private static let toolbarHeight: CGFloat = 44
+    private static let rowHeight: CGFloat = 38
+    private static let toolbarHeight: CGFloat = rowHeight * 2
+    /// The chrome needs more width than a small crop does, so the window floors
+    /// at a width the toolbar actually fits in and centres the canvas.
+    private static let minimumWidth: CGFloat = 660
 
     init(image: CGImage, onFinish: @escaping @MainActor (Data?) -> Void) {
         self.onFinish = onFinish
@@ -25,8 +32,9 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
 
         canvas = CanvasView(image: image, frame: NSRect(origin: .zero, size: canvasSize))
 
+        let windowWidth = max(canvasSize.width, Self.minimumWidth)
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: canvasSize.width, height: canvasSize.height + Self.toolbarHeight),
+            contentRect: NSRect(x: 0, y: 0, width: windowWidth, height: canvasSize.height + Self.toolbarHeight),
             styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = "aishot — \(image.width)×\(image.height)"
         window.isReleasedWhenClosed = false
@@ -37,23 +45,32 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
         canvas.delegate = self
         buildContentView(canvasSize: canvasSize)
         select(tool: .arrow)
+        select(color: Preferences.color)
+        select(size: Preferences.sizeClass)
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
     private func buildContentView(canvasSize: CGSize) {
         guard let content = window?.contentView else { return }
-        canvas.frame = NSRect(x: 0, y: 0, width: canvasSize.width, height: canvasSize.height)
-        canvas.autoresizingMask = [.width, .height]
+        let width = content.bounds.width
+
+        canvas.frame = NSRect(x: ((width - canvasSize.width) / 2).rounded(), y: 0,
+                              width: canvasSize.width, height: canvasSize.height)
         content.addSubview(canvas)
 
         let bar = NSVisualEffectView(frame: NSRect(x: 0, y: canvasSize.height,
-                                                   width: canvasSize.width, height: Self.toolbarHeight))
+                                                   width: width, height: Self.toolbarHeight))
         bar.autoresizingMask = [.width, .minYMargin]
         bar.material = .titlebar
         bar.blendingMode = .withinWindow
         content.addSubview(bar)
 
+        buildToolRow(in: bar)
+        buildStyleRow(in: bar)
+    }
+
+    private func buildToolRow(in bar: NSView) {
         toolbar.orientation = .horizontal
         toolbar.spacing = 6
         toolbar.translatesAutoresizingMaskIntoConstraints = false
@@ -61,7 +78,8 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
         NSLayoutConstraint.activate([
             toolbar.leadingAnchor.constraint(equalTo: bar.leadingAnchor, constant: 10),
             toolbar.trailingAnchor.constraint(lessThanOrEqualTo: bar.trailingAnchor, constant: -10),
-            toolbar.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
+            toolbar.topAnchor.constraint(equalTo: bar.topAnchor, constant: 5),
+            toolbar.heightAnchor.constraint(equalToConstant: Self.rowHeight - 10),
         ])
 
         for tool in Tool.allCases {
@@ -94,6 +112,43 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
         toolbar.addArrangedSubview(done)
     }
 
+    private func buildStyleRow(in bar: NSView) {
+        styleBar.orientation = .horizontal
+        styleBar.spacing = 4
+        styleBar.translatesAutoresizingMaskIntoConstraints = false
+        bar.addSubview(styleBar)
+        NSLayoutConstraint.activate([
+            styleBar.leadingAnchor.constraint(equalTo: bar.leadingAnchor, constant: 10),
+            styleBar.trailingAnchor.constraint(lessThanOrEqualTo: bar.trailingAnchor, constant: -10),
+            styleBar.bottomAnchor.constraint(equalTo: bar.bottomAnchor, constant: -5),
+        ])
+
+        for color in MarkupColor.palette {
+            let swatch = SwatchButton(color: color, target: self, action: #selector(swatchTapped(_:)))
+            swatches.append(swatch)
+            styleBar.addArrangedSubview(swatch)
+        }
+
+        let colorHint = NSTextField(labelWithString: "C")
+        colorHint.font = .systemFont(ofSize: 10)
+        colorHint.textColor = .tertiaryLabelColor
+        colorHint.toolTip = "Press C to cycle colours"
+        styleBar.addArrangedSubview(colorHint)
+
+        styleBar.addArrangedSubview(NSView())
+
+        sizeControl = NSSegmentedControl(labels: SizeClass.allCases.map(\.label),
+                                         trackingMode: .selectOne,
+                                         target: self, action: #selector(sizeChanged(_:)))
+        sizeControl.toolTip = "Stroke and text size — [ and ] to step"
+        styleBar.addArrangedSubview(sizeControl)
+
+        let sizeHint = NSTextField(labelWithString: "[ ]")
+        sizeHint.font = .systemFont(ofSize: 10)
+        sizeHint.textColor = .tertiaryLabelColor
+        styleBar.addArrangedSubview(sizeHint)
+    }
+
     func show() {
         window?.makeKeyAndOrderFront(nil)
         window?.makeFirstResponder(canvas)
@@ -114,6 +169,30 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
             button.bezelStyle = .rounded
             button.contentTintColor = candidate == tool ? .controlAccentColor : nil
         }
+        window?.makeFirstResponder(canvas)
+    }
+
+    @objc private func swatchTapped(_ sender: SwatchButton) {
+        select(color: sender.markupColor)
+    }
+
+    @objc private func sizeChanged(_ sender: NSSegmentedControl) {
+        let sizes = SizeClass.allCases
+        guard sizes.indices.contains(sender.selectedSegment) else { return }
+        select(size: sizes[sender.selectedSegment])
+    }
+
+    private func select(color: MarkupColor) {
+        canvas.color = color
+        for swatch in swatches { swatch.isSelected = swatch.markupColor == color }
+        Preferences.color = color
+        window?.makeFirstResponder(canvas)
+    }
+
+    private func select(size: SizeClass) {
+        canvas.sizeClass = size
+        sizeControl.selectedSegment = SizeClass.allCases.firstIndex(of: size) ?? 1
+        Preferences.sizeClass = size
         window?.makeFirstResponder(canvas)
     }
 
@@ -189,11 +268,19 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
             return false
         }
         if event.keyCode == 53 { cancelTapped(); return true }
-        if let digit = Int(event.charactersIgnoringModifiers ?? ""), let tool = Tool(rawValue: digit) {
+        guard !event.modifierFlags.contains(.command) else { return false }
+
+        let keys = event.charactersIgnoringModifiers ?? ""
+        if let digit = Int(keys), let tool = Tool(rawValue: digit) {
             select(tool: tool)
             return true
         }
-        return false
+        switch keys.lowercased() {
+        case "c": select(color: canvas.color.next); return true
+        case "[": select(size: canvas.sizeClass.smaller); return true
+        case "]": select(size: canvas.sizeClass.larger); return true
+        default: return false
+        }
     }
 }
 
