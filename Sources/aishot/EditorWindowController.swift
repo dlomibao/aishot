@@ -88,6 +88,7 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
 
         for tool in Tool.allCases {
             let button = NSButton(title: tool.label, target: self, action: #selector(toolTapped(_:)))
+            button.attributedTitle = titleWithHint(tool.label, "\(tool.rawValue)")
             button.bezelStyle = .rounded
             button.tag = tool.rawValue
             button.toolTip = "\(tool.label) — press \(tool.rawValue)"
@@ -98,27 +99,32 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
         toolbar.addArrangedSubview(NSView())
 
         let reload = NSButton(title: "Reload", target: self, action: #selector(pasteAction))
+        reload.attributedTitle = titleWithHint("Reload", "⌘V")
         reload.bezelStyle = .rounded
         reload.toolTip = "⌘V — load the image currently on the clipboard"
         toolbar.addArrangedSubview(reload)
 
         undoButton = NSButton(title: "Undo", target: self, action: #selector(undoTapped))
+        undoButton.attributedTitle = titleWithHint("Undo", "⌘Z")
         undoButton.bezelStyle = .rounded
         undoButton.toolTip = "⌘Z — remove the last annotation"
         undoButton.isEnabled = false
         toolbar.addArrangedSubview(undoButton)
 
         let save = NSButton(title: "Save…", target: self, action: #selector(saveAction))
+        save.attributedTitle = titleWithHint("Save…", "⌘S")
         save.bezelStyle = .rounded
         save.toolTip = "⌘S — write a PNG somewhere and keep editing"
         toolbar.addArrangedSubview(save)
 
         let cancel = NSButton(title: "Cancel", target: self, action: #selector(cancelTapped))
+        cancel.attributedTitle = titleWithHint("Cancel", "esc")
         cancel.bezelStyle = .rounded
         cancel.toolTip = "esc — discard and close, leaving the clipboard alone"
         toolbar.addArrangedSubview(cancel)
 
-        let done = NSButton(title: "Copy  ⏎", target: self, action: #selector(doneTapped))
+        let done = NSButton(title: "Copy", target: self, action: #selector(doneTapped))
+        done.attributedTitle = titleWithHint("Copy", "⏎")
         done.bezelStyle = .rounded
         done.toolTip = "⏎ — copy the annotated image and close"
         done.keyEquivalent = "\r"

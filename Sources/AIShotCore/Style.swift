@@ -83,13 +83,33 @@ public struct Style: Equatable, Sendable {
         self.fontName = fontName
     }
 
+    /// Base sizes in screen points, before the size class and backing scale.
+    static let baseFontPoints: CGFloat = 15
+    static let baseLinePoints: CGFloat = 3
+
+    /// Markup is sized in *screen points*, not as a fraction of the image.
+    ///
+    /// A screenshot is always viewed at 1:1 against the display it came from,
+    /// so annotation on a 1688x202 strip should look the same size as on a
+    /// full-window grab. Scaling by the image's short edge instead made markup
+    /// collapse to 2px on a wide strip and balloon to 60px on a big window —
+    /// an 8x swing driven by nothing but crop shape.
+    ///
+    /// The only image-dependent part is a ceiling, so markup cannot swamp a
+    /// very small crop.
     public static func scaled(to imageSize: CGSize,
+                              backingScale: CGFloat = 2,
                               color: MarkupColor = .red,
                               size: SizeClass = .medium) -> Style {
+        let scale = backingScale > 0 ? backingScale : 1
+        let factor = size.multiplier * scale
         let shortEdge = min(imageSize.width, imageSize.height)
-        let factor = size.multiplier
+
+        let font = min(baseFontPoints * factor, max(9, shortEdge * 0.35))
+        let line = min(baseLinePoints * factor, max(1, shortEdge * 0.08))
+
         return Style(color: color.cgColor,
-                     lineWidth: max(2, (shortEdge * 0.009 * factor).rounded()),
-                     fontSize: max(11, (shortEdge * 0.034 * factor).rounded()))
+                     lineWidth: max(1, line.rounded()),
+                     fontSize: max(9, font.rounded()))
     }
 }

@@ -45,9 +45,9 @@ screenshot without relaunching. It asks first if you have already drawn
 something.
 
 **Style applies to what you draw next.** Each shape keeps the colour and size
-it was drawn with, so a yellow note can sit beside a red arrow. Size is
-relative to the image, so "large" means large on a 4K grab and on a small crop
-alike. Your last choice is remembered between launches.
+it was drawn with, so a yellow note can sit beside a red arrow. Markup is sized
+in screen points, so it looks the same on a thin toolbar strip as on a
+full-window grab. Your last choice is remembered between launches.
 
 **Redaction is destructive.** It writes solid black into the output pixels
 rather than laying an overlay on top, so the original content is genuinely gone
@@ -133,7 +133,7 @@ Manager and Retina scaling correctly. The app starts from the clipboard.
 
 ```sh
 swift build           # the app
-./scripts/test.sh     # 36 core tests (needs Xcode's toolchain for XCTest)
+./scripts/test.sh     # core tests (needs Xcode's toolchain for XCTest)
 ./scripts/install.sh  # build, bundle, install, wire up Raycast
 ```
 

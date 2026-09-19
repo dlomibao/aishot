@@ -34,6 +34,7 @@ final class CanvasView: NSView {
 
     private var style: Style {
         .scaled(to: CGSize(width: baseImage.width, height: baseImage.height),
+                backingScale: window?.screen?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2,
                 color: color, size: sizeClass)
     }
 

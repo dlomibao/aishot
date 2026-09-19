@@ -161,15 +161,9 @@ final class RendererTests: XCTestCase {
         XCTAssertGreaterThan(probe.redPixelCount(inRect: CGRect(x: 85, y: 85, width: 30, height: 30)), 50)
     }
 
-    func testStyleScalesStrokeWidthWithImageSize() {
-        let small = Style.scaled(to: CGSize(width: 200, height: 200))
-        let large = Style.scaled(to: CGSize(width: 3000, height: 2000))
-        XCTAssertGreaterThan(large.lineWidth, small.lineWidth)
-    }
-
     func testStyleKeepsAMinimumStrokeOnTinyImages() {
         let tiny = Style.scaled(to: CGSize(width: 20, height: 20))
-        XCTAssertGreaterThanOrEqual(tiny.lineWidth, 2)
+        XCTAssertGreaterThanOrEqual(tiny.lineWidth, 1)
     }
 
     func testPNGEncodingProducesDecodableDataOfTheSameSize() throws {
@@ -238,12 +232,41 @@ final class PerAnnotationStyleTests: XCTestCase {
         XCTAssertLessThan(medium.fontSize, large.fontSize)
     }
 
-    func testSizeClassStillScalesWithTheImage() {
-        // "Large" is relative to the image, so a small crop's large stroke
-        // should stay under a big screenshot's small stroke.
-        let cropLarge = Style.scaled(to: CGSize(width: 200, height: 200), size: .large)
-        let hugeSmall = Style.scaled(to: CGSize(width: 4000, height: 3000), size: .small)
-        XCTAssertLessThan(cropLarge.lineWidth, hugeSmall.lineWidth)
+    /// Regression: markup used to scale off the image's short edge, so a wide
+    /// strip got a 2px stroke and 11px text while a full-window grab got 16px
+    /// and 60px — an 8x swing driven by nothing but crop shape.
+    func testMarkupIsTheSameSizeWhateverTheCropShape() {
+        let strip = Style.scaled(to: CGSize(width: 1688, height: 202), backingScale: 2)
+        let square = Style.scaled(to: CGSize(width: 864, height: 646), backingScale: 2)
+        let window = Style.scaled(to: CGSize(width: 2528, height: 1772), backingScale: 2)
+
+        XCTAssertEqual(strip.lineWidth, square.lineWidth)
+        XCTAssertEqual(square.lineWidth, window.lineWidth)
+        XCTAssertEqual(strip.fontSize, square.fontSize)
+        XCTAssertEqual(square.fontSize, window.fontSize)
+    }
+
+    func testMarkupTracksTheDisplaysBackingScale() {
+        // A Retina grab has twice the pixels for the same on-screen size, so
+        // the markup needs twice the pixels to look the same.
+        let oneX = Style.scaled(to: CGSize(width: 800, height: 600), backingScale: 1)
+        let twoX = Style.scaled(to: CGSize(width: 1600, height: 1200), backingScale: 2)
+        XCTAssertEqual(twoX.lineWidth, oneX.lineWidth * 2, accuracy: 1)
+        XCTAssertEqual(twoX.fontSize, oneX.fontSize * 2, accuracy: 1)
+    }
+
+    func testMarkupIsCappedSoItCannotSwampATinyCrop() {
+        let tiny = CGSize(width: 400, height: 40)
+        let style = Style.scaled(to: tiny, backingScale: 2, size: .large)
+        XCTAssertLessThanOrEqual(style.fontSize, tiny.height * 0.35 + 1,
+                                 "text must not overflow a thin crop")
+        XCTAssertLessThanOrEqual(style.lineWidth, tiny.height * 0.08 + 1)
+    }
+
+    func testAZeroBackingScaleDoesNotCollapseTheStyle() {
+        let style = Style.scaled(to: CGSize(width: 800, height: 600), backingScale: 0)
+        XCTAssertGreaterThanOrEqual(style.lineWidth, 1)
+        XCTAssertGreaterThanOrEqual(style.fontSize, 9)
     }
 
     func testEveryPaletteColourIsDistinctAndNamed() {

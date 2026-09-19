@@ -48,6 +48,21 @@ final class SwatchButton: NSButton {
     }
 }
 
+/// A button title with its shortcut trailing in smaller, dimmer type. Keeps the
+/// hint visible without the width cost of setting it at full size — the toolbar
+/// is what sets the window's minimum width.
+func titleWithHint(_ title: String, _ hint: String) -> NSAttributedString {
+    let result = NSMutableAttributedString(string: title, attributes: [
+        .font: NSFont.systemFont(ofSize: NSFont.systemFontSize),
+        .foregroundColor: NSColor.labelColor,
+    ])
+    result.append(NSAttributedString(string: "  \(hint)", attributes: [
+        .font: NSFont.systemFont(ofSize: 10, weight: .medium),
+        .foregroundColor: NSColor.secondaryLabelColor,
+    ]))
+    return result
+}
+
 /// Last-used colour and size survive relaunch, which matters because the app
 /// quits after every screenshot.
 enum Preferences {

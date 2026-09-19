@@ -72,9 +72,15 @@ than taking one style for the whole call. A global style would have meant that
 changing the colour restyled everything already drawn, which defeats the point
 of a colour picker — you want a yellow box next to a red arrow.
 
-`SizeClass` multiplies the image-derived base rather than setting fixed pixel
-counts, so "large" stays relative: a large stroke on a 300px crop is still
-lighter than a small stroke on a 4K screenshot.
+`SizeClass` multiplies a base measured in **screen points**, not a fraction of
+the image. Scaling by the image's short edge seemed reasonable and was wrong in
+practice: a 1688x202 toolbar strip got a 2px stroke and 11px text while a
+2528x1772 window grab got 16px and 60px — an 8x swing driven by nothing but
+crop shape, and the strip is the common case when pointing at a single row.
+
+A screenshot is always viewed at 1:1 against the display it came from, so the
+markup should be a constant size on screen. The only image-dependent part left
+is a ceiling, so markup cannot swamp a very small crop.
 
 Redaction ignores the selected colour. It is a privacy operation, not markup,
 and a "blue redaction" would be a misleading thing to offer.
