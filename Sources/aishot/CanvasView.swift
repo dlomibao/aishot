@@ -215,12 +215,17 @@ final class CanvasView: NSView, NSTextFieldDelegate {
         cancel.bezelStyle = .circular
         cancel.toolTip = "Discard this selection — esc"
 
-        // Sit inside the selection when there is no room beneath it.
+        // Prefer just beneath the selection's right edge, but clamp into the
+        // view: a narrow crop near an edge would otherwise put the buttons
+        // off-canvas, leaving no way to confirm.
         let size: CGFloat = 30
+        let pairWidth = size * 2 + 6
         let below = rect.minY - size - 6
-        let y = below >= 0 ? below : rect.minY + 6
-        confirm.frame = NSRect(x: min(rect.maxX - size * 2 - 10, bounds.width - size * 2 - 14), y: y, width: size, height: size)
-        cancel.frame = NSRect(x: confirm.frame.maxX + 6, y: y, width: size, height: size)
+        let y = min(max(below >= 0 ? below : rect.minY + 6, 4), max(4, bounds.height - size - 4))
+        let preferredX = rect.maxX - pairWidth
+        let x = min(max(preferredX, 4), max(4, bounds.width - pairWidth - 4))
+        confirm.frame = NSRect(x: x, y: y, width: size, height: size)
+        cancel.frame = NSRect(x: x + size + 6, y: y, width: size, height: size)
 
         addSubview(confirm)
         addSubview(cancel)

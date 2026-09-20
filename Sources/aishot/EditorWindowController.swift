@@ -52,38 +52,55 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
             maxPointSize: maxSize)
     }
 
-    private var toolBar: NSVisualEffectView?
+    private var canvasWidth: NSLayoutConstraint!
+    private var canvasHeight: NSLayoutConstraint!
 
+    /// Laid out with constraints rather than hand-computed frames: the toolbar
+    /// is pinned to the top edge, so no arithmetic during a resize can put it
+    /// somewhere the window does not show.
     private func buildContentView(canvasSize: CGSize) {
         guard let window, let content = window.contentView else { return }
 
         let bar = NSVisualEffectView()
         bar.material = .titlebar
         bar.blendingMode = .withinWindow
+        bar.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(bar)
         buildToolRow(in: bar)
         buildStyleRow(in: bar)
-        toolBar = bar
 
-        content.addSubview(canvas)
-        layOut(canvasSize: canvasSize)
+        canvas.translatesAutoresizingMaskIntoConstraints = false
+        content.addSubview(canvas, positioned: .below, relativeTo: bar)
+
+        canvasWidth = canvas.widthAnchor.constraint(equalToConstant: canvasSize.width)
+        canvasHeight = canvas.heightAnchor.constraint(equalToConstant: canvasSize.height)
+
+        NSLayoutConstraint.activate([
+            bar.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            bar.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            bar.topAnchor.constraint(equalTo: content.topAnchor),
+            bar.heightAnchor.constraint(equalToConstant: Self.toolbarHeight),
+
+            canvas.topAnchor.constraint(equalTo: bar.bottomAnchor),
+            canvas.centerXAnchor.constraint(equalTo: content.centerXAnchor),
+            canvas.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+            canvasWidth,
+            canvasHeight,
+        ])
+
+        resizeWindow(canvasSize: canvasSize)
     }
 
     /// Re-run whenever the image's dimensions change, which cropping does.
-    private func layOut(canvasSize: CGSize) {
-        guard let window, let bar = toolBar else { return }
-
-        // Measure the chrome rather than hardcoding a floor: a small crop would
-        // otherwise produce a window too narrow to show its own toolbar, and the
-        // right number changes every time a button is added.
+    private func resizeWindow(canvasSize: CGSize) {
+        guard let window else { return }
         let chromeWidth = max(toolbar.fittingSize.width, styleBar.fittingSize.width) + Self.barMargin * 2
         let width = max(canvasSize.width, chromeWidth).rounded()
-        window.setContentSize(NSSize(width: width, height: canvasSize.height + Self.toolbarHeight))
 
-        canvas.frame = NSRect(x: ((width - canvasSize.width) / 2).rounded(), y: 0,
-                              width: canvasSize.width, height: canvasSize.height)
-        bar.frame = NSRect(x: 0, y: canvasSize.height, width: width, height: Self.toolbarHeight)
-        bar.autoresizingMask = [.width, .minYMargin]
+        canvasWidth.constant = canvasSize.width
+        canvasHeight.constant = canvasSize.height
+        window.setContentSize(NSSize(width: width, height: canvasSize.height + Self.toolbarHeight))
+        window.contentView?.layoutSubtreeIfNeeded()
         window.center()
     }
 
@@ -332,7 +349,7 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
     /// A crop (or undoing one) changes the image's dimensions, so the window
     /// has to grow or shrink around it.
     func canvasDidChangeBounds(_ view: CanvasView) {
-        layOut(canvasSize: Self.canvasSize(for: view.croppedBounds.size))
+        resizeWindow(canvasSize: Self.canvasSize(for: view.croppedBounds.size))
         window?.title = "aishot — \(Int(view.croppedBounds.width))×\(Int(view.croppedBounds.height))"
     }
 
