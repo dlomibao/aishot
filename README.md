@@ -29,16 +29,26 @@ in the lower right, no, the other one" becomes an arrow.
 
 | Key | |
 |---|---|
-| `1` `2` `3` `4` `5` | arrow, box, text, number badge, redact |
+| `1` … `6` | arrow, box, text, number badge, redact, crop |
 | `C` | cycle colour |
 | `[` `]` | smaller / larger stroke and text |
-| `⌘Z` | undo last annotation |
+| `⌘Z` | undo — walks back through crops as well as annotations |
 | `⌘V` | load the screenshot now on the clipboard |
 | `⌘S` | save a PNG to `~/Downloads`, keep editing |
 | `⏎` | copy annotated image and close |
 | `esc` | cancel, leaving the clipboard untouched |
 
-Arrows, boxes and redactions are drag; text and badges are click.
+Arrows, boxes, redactions, text boxes and crops are drag; badges are click.
+
+**Text wraps inside the box you drag.** Drag out a width with the Text tool and
+the text wraps within it, growing downward as you type — long notes no longer
+run off the edge. Clicking instead of dragging gives you a sensible default
+width. An unbroken token like a URL is broken rather than allowed to overflow.
+
+**Crop waits for confirmation.** Drag a region and everything outside it dims,
+with ✓ and ✕ buttons by the selection. `⏎` or `C` confirms, `esc` discards the
+selection without touching the image. Cropping keeps your existing markup and
+is undoable — `⌘Z` restores the previous framing, so a mis-crop costs nothing.
 
 **Keep the window open across shots.** `⌃⇧⌘4` again, then `⌘V` swaps in the new
 screenshot without relaunching. It asks first if you have already drawn

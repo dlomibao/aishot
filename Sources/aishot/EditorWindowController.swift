@@ -20,13 +20,7 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
     init(image: CGImage, onFinish: @escaping @MainActor (Data?) -> Void) {
         self.onFinish = onFinish
 
-        let maxSize = (NSScreen.main?.visibleFrame.size).map {
-            CGSize(width: $0.width * 0.9, height: $0.height * 0.9 - Self.toolbarHeight)
-        } ?? CGSize(width: 1200, height: 800)
-        let canvasSize = CanvasTransform.preferredCanvasSize(
-            imagePixelSize: CGSize(width: image.width, height: image.height),
-            backingScale: NSScreen.main?.backingScaleFactor ?? 2,
-            maxPointSize: maxSize)
+        let canvasSize = Self.canvasSize(for: CGSize(width: image.width, height: image.height))
 
         canvas = CanvasView(image: image, frame: NSRect(origin: .zero, size: canvasSize))
 
@@ -48,6 +42,18 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
+    private static func canvasSize(for imagePixelSize: CGSize) -> CGSize {
+        let maxSize = (NSScreen.main?.visibleFrame.size).map {
+            CGSize(width: $0.width * 0.9, height: $0.height * 0.9 - toolbarHeight)
+        } ?? CGSize(width: 1200, height: 800)
+        return CanvasTransform.preferredCanvasSize(
+            imagePixelSize: imagePixelSize,
+            backingScale: NSScreen.main?.backingScaleFactor ?? 2,
+            maxPointSize: maxSize)
+    }
+
+    private var toolBar: NSVisualEffectView?
+
     private func buildContentView(canvasSize: CGSize) {
         guard let window, let content = window.contentView else { return }
 
@@ -57,6 +63,15 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
         content.addSubview(bar)
         buildToolRow(in: bar)
         buildStyleRow(in: bar)
+        toolBar = bar
+
+        content.addSubview(canvas)
+        layOut(canvasSize: canvasSize)
+    }
+
+    /// Re-run whenever the image's dimensions change, which cropping does.
+    private func layOut(canvasSize: CGSize) {
+        guard let window, let bar = toolBar else { return }
 
         // Measure the chrome rather than hardcoding a floor: a small crop would
         // otherwise produce a window too narrow to show its own toolbar, and the
@@ -67,8 +82,6 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
 
         canvas.frame = NSRect(x: ((width - canvasSize.width) / 2).rounded(), y: 0,
                               width: canvasSize.width, height: canvasSize.height)
-        content.addSubview(canvas)
-
         bar.frame = NSRect(x: 0, y: canvasSize.height, width: width, height: Self.toolbarHeight)
         bar.autoresizingMask = [.width, .minYMargin]
         window.center()
@@ -285,10 +298,14 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
     @objc private func cancelTapped() { finish(with: nil) }
 
     @objc private func doneTapped() {
-        // ⏎ belongs to the text field while one is open, so committing text
-        // takes priority over finishing the whole image.
+        // ⏎ resolves whatever is pending before it means "finish the image":
+        // committing text, then confirming a crop.
         if canvas.isEditingText {
             canvas.commitPendingText()
+            return
+        }
+        if canvas.hasPendingCrop {
+            canvas.confirmCrop()
             return
         }
         finish(with: canvas.exportPNG())
@@ -312,6 +329,13 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
         undoButton.isEnabled = view.canUndo
     }
 
+    /// A crop (or undoing one) changes the image's dimensions, so the window
+    /// has to grow or shrink around it.
+    func canvasDidChangeBounds(_ view: CanvasView) {
+        layOut(canvasSize: Self.canvasSize(for: view.croppedBounds.size))
+        window?.title = "aishot — \(Int(view.croppedBounds.width))×\(Int(view.croppedBounds.height))"
+    }
+
     // MARK: - Keyboard
 
     /// Digit keys pick tools; esc cancels. ⌘Z arrives via the app's Edit menu.
@@ -320,7 +344,12 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
             if event.keyCode == 53 { canvas.undo(); return true }
             return false
         }
-        if event.keyCode == 53 { cancelTapped(); return true }
+        // esc backs out of a pending crop before it cancels the whole editor.
+        if event.keyCode == 53 {
+            if canvas.cancelPendingCrop() { return true }
+            cancelTapped()
+            return true
+        }
         guard !event.modifierFlags.contains(.command) else { return false }
 
         let keys = event.charactersIgnoringModifiers ?? ""
@@ -329,7 +358,11 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
             return true
         }
         switch keys.lowercased() {
-        case "c": select(color: canvas.color.next); return true
+        // C confirms a pending crop; colour cycling is suppressed until it is
+        // resolved, since confirming is the only thing you want at that moment.
+        case "c":
+            if canvas.hasPendingCrop { canvas.confirmCrop() } else { select(color: canvas.color.next) }
+            return true
         case "[": select(size: canvas.sizeClass.smaller); return true
         case "]": select(size: canvas.sizeClass.larger); return true
         default: return false

@@ -6,13 +6,15 @@ import CoreGraphics
 public enum Annotation: Equatable, Sendable {
     case arrow(from: CGPoint, to: CGPoint)
     case box(CGRect)
-    case text(origin: CGPoint, string: String)
+    /// `box` sets the wrap width; text flows from its top edge and grows
+    /// downward, so the height is a starting hint rather than a clip.
+    case text(box: CGRect, string: String)
     case badge(center: CGPoint, number: Int)
     case redact(CGRect)
 }
 
 public enum Tool: Int, CaseIterable, Sendable {
-    case arrow = 1, box, text, badge, redact
+    case arrow = 1, box, text, badge, redact, crop
 
     public var label: String {
         switch self {
@@ -21,13 +23,14 @@ public enum Tool: Int, CaseIterable, Sendable {
         case .text: return "Text"
         case .badge: return "Number"
         case .redact: return "Redact"
+        case .crop: return "Crop"
         }
     }
 
     public var isDragBased: Bool {
         switch self {
-        case .arrow, .box, .redact: return true
-        case .text, .badge: return false
+        case .arrow, .box, .redact, .text, .crop: return true
+        case .badge: return false
         }
     }
 }
@@ -44,10 +47,34 @@ public struct StyledAnnotation: Sendable {
     }
 }
 
+/// One entry in the undo stack. Cropping sits alongside drawing so that ⌘Z
+/// walks back through both, and a mis-crop never destroys markup.
+public enum Operation: Sendable {
+    case annotation(StyledAnnotation)
+    /// Absolute, in the original image's pixel coordinates.
+    case crop(CGRect)
+}
+
 public struct AnnotationDocument: Sendable {
-    public private(set) var annotations: [StyledAnnotation] = []
+    public private(set) var operations: [Operation] = []
 
     public init() {}
+
+    public var annotations: [StyledAnnotation] {
+        operations.compactMap { if case let .annotation(a) = $0 { return a } else { return nil } }
+    }
+
+    /// Crops are stored absolute, so the one in effect is simply the last one.
+    public var cropRect: CGRect? {
+        for operation in operations.reversed() {
+            if case let .crop(rect) = operation { return rect }
+        }
+        return nil
+    }
+
+    public mutating func crop(to rect: CGRect) {
+        operations.append(.crop(rect))
+    }
 
     /// Badges number themselves by how many are currently placed, so undoing one
     /// frees its number again rather than leaving a gap.
@@ -59,12 +86,19 @@ public struct AnnotationDocument: Sendable {
     }
 
     public mutating func add(_ shape: Annotation, style: Style) {
-        annotations.append(StyledAnnotation(shape, style: style))
+        operations.append(.annotation(StyledAnnotation(shape, style: style)))
     }
 
     public mutating func undo() {
-        _ = annotations.popLast()
+        _ = operations.popLast()
     }
 
-    public var isEmpty: Bool { annotations.isEmpty }
+    public var isEmpty: Bool { operations.isEmpty }
+
+    /// True when undoing would change the visible bounds, so the window knows
+    /// it has to resize.
+    public var lastOperationIsCrop: Bool {
+        if case .crop = operations.last { return true }
+        return false
+    }
 }

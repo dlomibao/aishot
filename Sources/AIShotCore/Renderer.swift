@@ -16,7 +16,7 @@ public enum Renderer {
             switch annotation.shape {
             case let .arrow(from, to):     drawArrow(from: from, to: to, in: ctx, style: style)
             case let .box(rect):           drawBox(rect, in: ctx, style: style)
-            case let .text(origin, string): drawText(string, at: origin, in: ctx, style: style)
+            case let .text(box, string):   drawText(string, in: box, ctx: ctx, style: style)
             case let .badge(center, n):    drawBadge(n, at: center, in: ctx, style: style)
             case let .redact(rect):        drawRedaction(rect, in: ctx)
             }
@@ -25,18 +25,38 @@ public enum Renderer {
     }
 
     public static func render(base: CGImage, annotations: [StyledAnnotation]) -> CGImage? {
-        let width = base.width, height = base.height
-        guard let ctx = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
-                                  bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+        render(base: base, annotations: annotations, crop: nil)
+    }
+
+    /// Everything is expressed in the *original* image's coordinates. Cropping
+    /// shifts the context rather than rewriting the annotations, so a crop can
+    /// be undone without having to move anything back.
+    public static func render(base: CGImage, annotations: [StyledAnnotation], crop: CGRect?) -> CGImage? {
+        let full = CGRect(x: 0, y: 0, width: base.width, height: base.height)
+        let visible = (crop.map { $0.intersection(full) }?.isEmpty == false ? crop!.intersection(full) : full)
+            .integral
+
+        guard visible.width >= 1, visible.height >= 1,
+              let ctx = CGContext(data: nil, width: Int(visible.width), height: Int(visible.height),
+                                  bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
                                   bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
         ctx.interpolationQuality = .high
-        ctx.draw(base, in: CGRect(x: 0, y: 0, width: width, height: height))
+        ctx.translateBy(x: -visible.minX, y: -visible.minY)
+        ctx.draw(base, in: full)
         draw(annotations, in: ctx)
         return ctx.makeImage()
     }
 
-    public static func pngData(base: CGImage, annotations: [StyledAnnotation]) -> Data? {
-        guard let image = render(base: base, annotations: annotations) else { return nil }
+    /// The visible bounds after a crop, clamped to the image.
+    public static func visibleRect(imageSize: CGSize, crop: CGRect?) -> CGRect {
+        let full = CGRect(origin: .zero, size: imageSize)
+        guard let crop else { return full }
+        let clamped = crop.intersection(full).integral
+        return clamped.width >= 1 && clamped.height >= 1 ? clamped : full
+    }
+
+    public static func pngData(base: CGImage, annotations: [StyledAnnotation], crop: CGRect? = nil) -> Data? {
+        guard let image = render(base: base, annotations: annotations, crop: crop) else { return nil }
         return pngData(of: image)
     }
 
@@ -94,12 +114,35 @@ public enum Renderer {
         ctx.fillPath()
     }
 
-    private static func drawText(_ string: String, at origin: CGPoint, in ctx: CGContext, style: Style) {
-        guard !string.isEmpty else { return }
-        let line = CTLineCreateWithAttributedString(attributed(string, style: style))
+    /// Wraps within the box's width, flowing down from its top edge. The box
+    /// height is where typing started, not a clip — long text grows past it
+    /// rather than disappearing.
+    private static func drawText(_ string: String, in box: CGRect, ctx: CGContext, style: Style) {
+        guard !string.isEmpty, box.width >= 1 else { return }
+        let attributed = attributed(string, style: style)
+        let framesetter = CTFramesetterCreateWithAttributedString(attributed)
+        let height = textHeight(framesetter: framesetter, width: box.width)
+        let flowed = CGRect(x: box.minX, y: box.maxY - height, width: box.width, height: height)
         ctx.textMatrix = .identity
-        ctx.textPosition = origin
-        CTLineDraw(line, ctx)
+        let frame = CTFramesetterCreateFrame(framesetter, CFRangeMake(0, 0),
+                                             CGPath(rect: flowed, transform: nil), nil)
+        CTFrameDraw(frame, ctx)
+    }
+
+    private static func textHeight(framesetter: CTFramesetter, width: CGFloat) -> CGFloat {
+        var fitRange = CFRange()
+        let size = CTFramesetterSuggestFrameSizeWithConstraints(
+            framesetter, CFRangeMake(0, 0), nil,
+            CGSize(width: width, height: .greatestFiniteMagnitude), &fitRange)
+        return ceil(size.height)
+    }
+
+    /// How tall the text will render at a given width — used by the editor to
+    /// grow the input box as you type.
+    public static func textHeight(_ string: String, width: CGFloat, style: Style) -> CGFloat {
+        guard !string.isEmpty, width >= 1 else { return style.fontSize * 1.3 }
+        return textHeight(framesetter: CTFramesetterCreateWithAttributedString(attributed(string, style: style)),
+                          width: width)
     }
 
     private static func drawBadge(_ number: Int, at center: CGPoint, in ctx: CGContext, style: Style) {
@@ -120,18 +163,21 @@ public enum Renderer {
 
     private static func attributed(_ string: String, style: Style) -> CFAttributedString {
         let font = CTFontCreateWithName(style.fontName as CFString, style.fontSize, nil)
+        // Word wrapping, set explicitly rather than relying on the default.
+        // CoreText still breaks a token too long to fit on its own line.
+        var breakMode = CTLineBreakMode.byWordWrapping
+        let paragraph = withUnsafeBytes(of: &breakMode) { raw -> CTParagraphStyle in
+            var setting = CTParagraphStyleSetting(spec: .lineBreakMode,
+                                                  valueSize: MemoryLayout<CTLineBreakMode>.size,
+                                                  value: raw.baseAddress!)
+            return CTParagraphStyleCreate(&setting, 1)
+        }
         let attributes: [CFString: Any] = [
             kCTFontAttributeName: font,
             kCTForegroundColorAttributeName: style.color,
+            kCTParagraphStyleAttributeName: paragraph,
         ]
         return CFAttributedStringCreate(nil, string as CFString, attributes as CFDictionary)
     }
 
-    /// Text is drawn from a baseline; the editor places it from where you clicked.
-    public static func textSize(_ string: String, style: Style) -> CGSize {
-        guard !string.isEmpty else { return .zero }
-        let line = CTLineCreateWithAttributedString(attributed(string, style: style))
-        let bounds = CTLineGetBoundsWithOptions(line, [])
-        return CGSize(width: bounds.width, height: bounds.height)
-    }
 }

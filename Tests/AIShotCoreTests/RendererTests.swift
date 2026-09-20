@@ -147,12 +147,12 @@ final class RendererTests: XCTestCase {
     }
 
     func testTextRendersInk() throws {
-        let probe = try Probe(annotations: [.text(origin: CGPoint(x: 20, y: 100), string: "fix this")])
+        let probe = try Probe(annotations: [.text(box: CGRect(x: 20, y: 90, width: 160, height: 24), string: "fix this")])
         XCTAssertTrue(probe.isAnyPixelRed)
     }
 
     func testEmptyTextRendersNothing() throws {
-        let probe = try Probe(annotations: [.text(origin: CGPoint(x: 20, y: 100), string: "")])
+        let probe = try Probe(annotations: [.text(box: CGRect(x: 20, y: 90, width: 160, height: 24), string: "")])
         XCTAssertFalse(probe.isAnyPixelRed)
     }
 
@@ -294,5 +294,144 @@ final class PerAnnotationStyleTests: XCTestCase {
         XCTAssertEqual(SizeClass.large.larger, .large)
         XCTAssertEqual(SizeClass.small.larger, .medium)
         XCTAssertEqual(SizeClass.large.smaller, .medium)
+    }
+}
+
+
+final class TextWrappingTests: XCTestCase {
+    private let style = Style.scaled(to: CGSize(width: 600, height: 400), backingScale: 1)
+
+    func testLongTextWrapsOntoMoreLinesThanShortText() {
+        let short = Renderer.textHeight("short", width: 200, style: style)
+        let long = Renderer.textHeight("this label is definitely long enough to need wrapping",
+                                       width: 200, style: style)
+        XCTAssertGreaterThan(long, short * 1.5, "expected the long string to occupy extra lines")
+    }
+
+    func testANarrowerBoxMakesTheSameTextTaller() {
+        let text = "wraps differently depending on the width it is given"
+        let wide = Renderer.textHeight(text, width: 400, style: style)
+        let narrow = Renderer.textHeight(text, width: 120, style: style)
+        XCTAssertGreaterThan(narrow, wide)
+    }
+
+    func testEmptyTextHasNoHeightBeyondOneLine() {
+        XCTAssertLessThanOrEqual(Renderer.textHeight("", width: 200, style: style), style.fontSize * 1.5)
+    }
+
+    func testAZeroWidthBoxDoesNotDivideByZeroOrHang() {
+        XCTAssertGreaterThan(Renderer.textHeight("anything", width: 0, style: style), 0)
+    }
+
+    /// A URL has no spaces to break on, so word wrapping alone would run it
+    /// past the edge of the box.
+    func testAnUnbreakableTokenStaysInsideTheBox() throws {
+        let box = CGRect(x: 40, y: 200, width: 200, height: 100)
+        let probe = try Probe(styled: [
+            StyledAnnotation(.text(box: box, string: "https://example.com/a/very/long/unbroken/path"),
+                             style: Style.scaled(to: CGSize(width: 600, height: 400), backingScale: 1)),
+        ], width: 600, height: 400)
+        let spill = probe.redPixelCount(inRect: CGRect(x: box.maxX + 2, y: 150, width: 200, height: 200))
+        XCTAssertEqual(spill, 0, "text must not render past the right edge of its box")
+    }
+}
+
+final class CropTests: XCTestCase {
+    private func image(_ w: Int, _ h: Int) throws -> CGImage {
+        try XCTUnwrap(Probe.whiteImage(width: w, height: h))
+    }
+
+    func testCroppedOutputHasTheCropsDimensions() throws {
+        let out = try XCTUnwrap(Renderer.render(base: image(800, 600), annotations: [],
+                                                crop: CGRect(x: 100, y: 50, width: 300, height: 200)))
+        XCTAssertEqual(out.width, 300)
+        XCTAssertEqual(out.height, 200)
+    }
+
+    func testNoCropLeavesTheImageWhole() throws {
+        let out = try XCTUnwrap(Renderer.render(base: image(800, 600), annotations: [], crop: nil))
+        XCTAssertEqual(out.width, 800)
+        XCTAssertEqual(out.height, 600)
+    }
+
+    func testACropReachingOutsideTheImageIsClampedToIt() {
+        let visible = Renderer.visibleRect(imageSize: CGSize(width: 800, height: 600),
+                                           crop: CGRect(x: 700, y: 500, width: 400, height: 400))
+        XCTAssertEqual(visible, CGRect(x: 700, y: 500, width: 100, height: 100))
+    }
+
+    func testACropEntirelyOutsideTheImageFallsBackToTheWholeImage() {
+        let visible = Renderer.visibleRect(imageSize: CGSize(width: 800, height: 600),
+                                           crop: CGRect(x: 2000, y: 2000, width: 100, height: 100))
+        XCTAssertEqual(visible, CGRect(x: 0, y: 0, width: 800, height: 600))
+    }
+
+    /// Annotations stay in the original image's coordinates, so the crop has to
+    /// shift them into view rather than the other way round.
+    func testAnnotationsLandInTheRightPlaceAfterCropping() throws {
+        let style = Style.scaled(to: CGSize(width: 400, height: 400), backingScale: 1)
+        let redaction = StyledAnnotation(.redact(CGRect(x: 220, y: 220, width: 40, height: 40)), style: style)
+        let out = try XCTUnwrap(Renderer.render(base: image(400, 400), annotations: [redaction],
+                                                crop: CGRect(x: 200, y: 200, width: 100, height: 100)))
+        let px = try XCTUnwrap(Probe.rgbaBytes(of: out))
+        // Image point (240,240) is point (40,40) inside the crop.
+        let i = ((100 - 1 - 40) * 100 + 40) * 4
+        XCTAssertEqual(px[i], 0, "the redaction should appear 40px into the cropped image")
+        let corner = ((100 - 1 - 90) * 100 + 90) * 4
+        XCTAssertEqual(px[corner], 255, "outside the redaction should be untouched")
+    }
+}
+
+final class DocumentCropTests: XCTestCase {
+    private let style = Style.scaled(to: CGSize(width: 400, height: 400))
+
+    func testTheLastCropIsTheOneInEffect() {
+        var doc = AnnotationDocument()
+        doc.crop(to: CGRect(x: 0, y: 0, width: 200, height: 200))
+        doc.crop(to: CGRect(x: 10, y: 10, width: 50, height: 50))
+        XCTAssertEqual(doc.cropRect, CGRect(x: 10, y: 10, width: 50, height: 50))
+    }
+
+    func testUndoingACropRevealsThePreviousOne() {
+        var doc = AnnotationDocument()
+        doc.crop(to: CGRect(x: 0, y: 0, width: 200, height: 200))
+        doc.crop(to: CGRect(x: 10, y: 10, width: 50, height: 50))
+        doc.undo()
+        XCTAssertEqual(doc.cropRect, CGRect(x: 0, y: 0, width: 200, height: 200))
+    }
+
+    func testUndoingTheOnlyCropRemovesItEntirely() {
+        var doc = AnnotationDocument()
+        doc.crop(to: CGRect(x: 0, y: 0, width: 200, height: 200))
+        doc.undo()
+        XCTAssertNil(doc.cropRect)
+    }
+
+    func testCroppingDoesNotDiscardAnnotations() {
+        var doc = AnnotationDocument()
+        doc.add(.box(CGRect(x: 0, y: 0, width: 10, height: 10)), style: style)
+        doc.crop(to: CGRect(x: 0, y: 0, width: 50, height: 50))
+        XCTAssertEqual(doc.annotations.count, 1)
+    }
+
+    func testUndoWalksBackThroughCropsAndAnnotationsInOrder() {
+        var doc = AnnotationDocument()
+        doc.add(.box(CGRect(x: 0, y: 0, width: 10, height: 10)), style: style)
+        doc.crop(to: CGRect(x: 0, y: 0, width: 50, height: 50))
+        doc.add(.box(CGRect(x: 5, y: 5, width: 10, height: 10)), style: style)
+
+        XCTAssertFalse(doc.lastOperationIsCrop)
+        doc.undo()
+        XCTAssertTrue(doc.lastOperationIsCrop, "the crop should now be the most recent operation")
+        doc.undo()
+        XCTAssertNil(doc.cropRect)
+        XCTAssertEqual(doc.annotations.count, 1)
+    }
+
+    func testBadgeNumberingIgnoresCrops() {
+        var doc = AnnotationDocument()
+        doc.add(.badge(center: .zero, number: doc.nextBadgeNumber), style: style)
+        doc.crop(to: CGRect(x: 0, y: 0, width: 50, height: 50))
+        XCTAssertEqual(doc.nextBadgeNumber, 2)
     }
 }

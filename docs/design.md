@@ -88,6 +88,35 @@ and a "blue redaction" would be a misleading thing to offer.
 Last colour and size persist in `UserDefaults`. The app quits after every
 screenshot, so without persistence you would re-pick your preference each time.
 
+## Cropping is an undoable operation, not a destructive edit
+
+The undo stack holds `Operation` values — either an annotation or a crop — so
+`⌘Z` walks back through both. Annotations stay in the **original** image's
+coordinates and the renderer translates the context by the crop origin, rather
+than rewriting every annotation when you crop. That is what makes undo cheap:
+there is nothing to move back.
+
+Crops are stored absolute, so the one in effect is simply the last one in the
+stack and nested crops need no composition logic.
+
+A crop is confirmed rather than applied on mouse-up. Everything outside the
+selection dims, and ✓ / ✕ appear beside it. `C` confirms while a crop is
+pending, which means colour cycling is suppressed until the crop resolves —
+worth the overload, because confirming is the only thing you want at that
+moment.
+
+## Text wraps inside a box
+
+`Annotation.text` carries a `CGRect`, not a point. The renderer uses
+`CTFramesetter` to flow text from the box's top edge downward, so the height is
+where you started typing rather than a clip — long text grows past the box
+instead of disappearing. The editor asks the renderer for the height as you
+type and grows the input field to match, so the field shows what will be drawn.
+
+Line breaking is set to word wrapping explicitly. CoreText still breaks a token
+too long to fit on its own line, which a test pins, since a pasted URL would
+otherwise run past the box edge.
+
 ## Decisions
 
 **Redaction uses `.copy` blend mode.** A composited black rect would still be
