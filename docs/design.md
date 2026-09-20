@@ -113,6 +113,13 @@ where you started typing rather than a clip — long text grows past the box
 instead of disappearing. The editor asks the renderer for the height as you
 type and grows the input field to match, so the field shows what will be drawn.
 
+`⏎` commits the text, so a line break needs a modifier. macOS binds
+`insertNewlineIgnoringFieldEditor:` to ⌥⏎ and `insertLineBreak:` to ⌃⏎ in
+`StandardKeyBinding.dict`; ⇧⏎ has no system binding at all and is a chat-app
+convention. All three are accepted, because which one someone reaches for
+depends on what they used last, and being wrong costs them a committed
+annotation.
+
 Line breaking is set to word wrapping explicitly. CoreText still breaks a token
 too long to fit on its own line, which a test pins, since a pasted URL would
 otherwise run past the box edge.

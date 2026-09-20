@@ -304,6 +304,28 @@ final class CanvasView: NSView, NSTextFieldDelegate {
         commitPendingText()
     }
 
+    /// ⏎ commits. A newline needs a modifier, and which one people reach for
+    /// depends on where they came from: ⌥⏎ and ⌃⏎ are the macOS standard
+    /// bindings, ⇧⏎ has no system binding but is what chat apps trained
+    /// everyone to expect. All three insert a line break.
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        switch selector {
+        case #selector(NSResponder.insertNewline(_:)):
+            if NSApp.currentEvent?.modifierFlags.contains(.shift) == true {
+                textView.insertNewline(nil)
+                return true
+            }
+            commitPendingText()
+            return true
+        case #selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)),
+             #selector(NSResponder.insertLineBreak(_:)):
+            textView.insertNewline(nil)
+            return true
+        default:
+            return false
+        }
+    }
+
     func commitPendingText() {
         guard let field = textEditor else { return }
         let string = field.stringValue

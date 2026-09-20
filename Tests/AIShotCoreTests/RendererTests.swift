@@ -319,6 +319,23 @@ final class TextWrappingTests: XCTestCase {
         XCTAssertLessThanOrEqual(Renderer.textHeight("", width: 200, style: style), style.fontSize * 1.5)
     }
 
+    func testExplicitLineBreaksMakeTextTaller() {
+        let one = Renderer.textHeight("one line", width: 400, style: style)
+        let three = Renderer.textHeight("one line\nsecond line\nthird line", width: 400, style: style)
+        XCTAssertGreaterThan(three, one * 2.5, "each hard break should add a line")
+    }
+
+    func testABreakIsHonouredEvenWhenTheTextWouldFitOnOneLine() {
+        let wide: CGFloat = 4000
+        XCTAssertGreaterThan(Renderer.textHeight("a\nb", width: wide, style: style),
+                             Renderer.textHeight("a b", width: wide, style: style))
+    }
+
+    func testTrailingBreaksDoNotCollapse() {
+        XCTAssertGreaterThan(Renderer.textHeight("text\n\n", width: 400, style: style),
+                             Renderer.textHeight("text", width: 400, style: style))
+    }
+
     func testAZeroWidthBoxDoesNotDivideByZeroOrHang() {
         XCTAssertGreaterThan(Renderer.textHeight("anything", width: 0, style: style), 0)
     }

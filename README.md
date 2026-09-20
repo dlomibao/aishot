@@ -35,6 +35,7 @@ in the lower right, no, the other one" becomes an arrow.
 | `⌘Z` | undo — walks back through crops as well as annotations |
 | `⌘V` | load the screenshot now on the clipboard |
 | `⌘S` | save a PNG to `~/Downloads`, keep editing |
+| `⇧⏎` `⌥⏎` `⌃⏎` | line break while typing text |
 | `⏎` | copy annotated image and close |
 | `esc` | cancel, leaving the clipboard untouched |
 
@@ -42,7 +43,9 @@ Arrows, boxes, redactions, text boxes and crops are drag; badges are click.
 
 **Text wraps inside the box you drag.** Drag out a width with the Text tool and
 the text wraps within it, growing downward as you type — long notes no longer
-run off the edge. Clicking instead of dragging gives you a sensible default
+run off the edge. `⏎` commits; for a deliberate line break use `⇧⏎`, `⌥⏎` or
+`⌃⏎` — the last two are macOS's own bindings, the first is the one chat apps
+taught everyone. Clicking instead of dragging gives you a sensible default
 width. An unbroken token like a URL is broken rather than allowed to overflow.
 
 **Crop waits for confirmation.** Drag a region and everything outside it dims,
