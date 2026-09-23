@@ -1,6 +1,7 @@
 import AIShotCore
 import AppKit
 import CoreGraphics
+import UniformTypeIdentifiers
 
 enum Pasteboard {
     /// Screenshots arrive as PNG or TIFF depending on how they were copied.
@@ -15,7 +16,13 @@ enum Pasteboard {
             }
         }
         // Fall back to a copied image file (Finder, or ⇧⌘4 saved to disk).
-        if let urls = pb.readObjects(forClasses: [NSURL.self], options: nil) as? [URL],
+        // File URLs only: a copied web link would otherwise be fetched here,
+        // synchronously, on the main thread.
+        let fileOptions: [NSPasteboard.ReadingOptionKey: Any] = [
+            .urlReadingFileURLsOnly: true,
+            .urlReadingContentsConformToTypes: [UTType.image.identifier],
+        ]
+        if let urls = pb.readObjects(forClasses: [NSURL.self], options: fileOptions) as? [URL],
            let url = urls.first,
            let source = CGImageSourceCreateWithURL(url as CFURL, nil) {
             return CGImageSourceCreateImageAtIndex(source, 0, nil)
@@ -50,7 +57,8 @@ enum OutputFile {
     /// image but will take a path or a drag.
     @discardableResult
     static func save(png: Data) -> URL? {
-        let url = directory.appendingPathComponent(suggestedName())
+        let url = FileNaming.uniqueURL(for: directory.appendingPathComponent(suggestedName()),
+                                       exists: { FileManager.default.fileExists(atPath: $0.path) })
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             try png.write(to: url)

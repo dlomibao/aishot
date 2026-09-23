@@ -187,9 +187,9 @@ final class CanvasView: NSView, NSTextFieldDelegate {
                          height: style.fontSize / transform.scale * 1.4)
             beginTextEntry(in: box)
         default:
-            guard let annotation = pendingAnnotation else { return }
-            if case let .box(rect) = annotation, rect.width < 2, rect.height < 2 { return }
-            if case let .redact(rect) = annotation, rect.width < 2, rect.height < 2 { return }
+            // A few screen points, converted to image pixels.
+            guard let annotation = pendingAnnotation,
+                  !annotation.isDegenerate(minimum: 4 * transform.scale) else { return }
             document.add(annotation, style: style)
             changed()
         }
