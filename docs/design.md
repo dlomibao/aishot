@@ -151,6 +151,13 @@ last folder used. A fixed destination is predictable — you know where the file
 went without reading the panel — and `~/Pictures/aishots` still archives every
 copy regardless.
 
+**Closing asks before it throws markup away.** Esc, Cancel and the window's
+close button all confirm when there is something drawn, and the dialog maps esc
+to "Keep Editing" so pressing esc twice cannot discard the work the first press
+asked about. The key monitor also ignores keys aimed at a sheet or alert: the
+save panel is an in-process window in this unsandboxed app, so without that
+check, esc in the Save dialog closed the whole editor.
+
 **Save is not a terminal action.** Copy closes the editor; Save leaves it open,
 so you can save a PNG and carry on annotating or save a second copy elsewhere.
 

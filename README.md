@@ -32,12 +32,12 @@ in the lower right, no, the other one" becomes an arrow.
 | `1` … `6` | arrow, box, text, number badge, redact, crop |
 | `C` | cycle colour |
 | `[` `]` | smaller / larger stroke and text |
-| `⌘Z` | undo — walks back through crops as well as annotations |
+| `⌘Z` | undo — walks back through crops as well as annotations; while typing, undoes the typing |
 | `⌘V` | load the screenshot now on the clipboard |
 | `⌘S` | save a PNG to `~/Downloads`, keep editing |
 | `⇧⏎` `⌥⏎` `⌃⏎` | line break while typing text |
 | `⏎` | copy annotated image and close |
-| `esc` | cancel, leaving the clipboard untouched |
+| `esc` | cancel, leaving the clipboard untouched — asks first if you have drawn anything; while typing, discards just that text box |
 
 Arrows, boxes, redactions, text boxes and crops are drag; badges are click.
 

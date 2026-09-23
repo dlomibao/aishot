@@ -259,13 +259,28 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
     }
 
     private func confirmDiscardingMarkup() -> Bool {
-        guard canvas.canUndo else { return true }
+        confirmDiscard(title: "Replace this image?",
+                       detail: "Loading the clipboard will discard the markup you have already drawn.",
+                       action: "Replace")
+    }
+
+    private func confirmClosing() -> Bool {
+        confirmDiscard(title: "Discard your markup?",
+                       detail: "Closing now throws away what you have drawn. Nothing is copied to the clipboard.",
+                       action: "Discard")
+    }
+
+    private func confirmDiscard(title: String, detail: String, action: String) -> Bool {
+        guard canvas.hasMarkup else { return true }
         let alert = NSAlert()
-        alert.messageText = "Replace this image?"
-        alert.informativeText = "Loading the clipboard will discard the markup you have already drawn."
-        alert.addButton(withTitle: "Replace")
-        alert.addButton(withTitle: "Keep Editing")
+        alert.messageText = title
+        alert.informativeText = detail
         alert.alertStyle = .warning
+        let destructive = alert.addButton(withTitle: action)
+        destructive.hasDestructiveAction = true
+        // esc must mean "keep editing", or a second esc press discards the work
+        // the first one was asking about.
+        alert.addButton(withTitle: "Keep Editing").keyEquivalent = "\u{1b}"
         return alert.runModal() == .alertFirstButtonReturn
     }
 
@@ -281,6 +296,7 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
     /// Unlike Copy, saving is not a terminal action — the window stays up so you
     /// can keep annotating or save a second copy elsewhere.
     @objc func saveAction() {
+        if canvas.hasPendingCrop { canvas.confirmCrop() }
         guard let png = canvas.exportPNG() else {
             presentError("Could not render the image.")
             return
@@ -312,7 +328,14 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
         if let window { alert.beginSheetModal(for: window) } else { alert.runModal() }
     }
 
-    @objc private func cancelTapped() { finish(with: nil) }
+    @objc private func cancelTapped() {
+        guard confirmClosing() else { return }
+        finish(with: nil)
+    }
+
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        confirmClosing()
+    }
 
     @objc private func doneTapped() {
         // ⏎ resolves whatever is pending before it means "finish the image":
@@ -344,6 +367,7 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
 
     func canvasDidChange(_ view: CanvasView) {
         undoButton.isEnabled = view.canUndo
+        window?.subtitle = ""
     }
 
     /// A crop (or undoing one) changes the image's dimensions, so the window
@@ -357,10 +381,18 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
 
     /// Digit keys pick tools; esc cancels. ⌘Z arrives via the app's Edit menu.
     func handle(keyDown event: NSEvent) -> Bool {
+        // The save panel and alerts are in-process windows, so this monitor
+        // sees their keys too. esc there must close the dialog, not the editor.
+        guard let window, event.window === window,
+              window.attachedSheet == nil, NSApp.modalWindow == nil else { return false }
+
         if canvas.isEditingText {
-            if event.keyCode == 53 { canvas.undo(); return true }
+            if event.keyCode == 53 { canvas.discardPendingText(); return true }
             return false
         }
+        // Some other text control has focus; its keys are not tool shortcuts.
+        if window.firstResponder is NSText { return false }
+
         // esc backs out of a pending crop before it cancels the whole editor.
         if event.keyCode == 53 {
             if canvas.cancelPendingCrop() { return true }
