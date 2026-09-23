@@ -211,9 +211,11 @@ final class CanvasView: NSView, NSTextFieldDelegate {
         let confirm = NSButton(title: "✓", target: self, action: #selector(confirmCrop))
         confirm.bezelStyle = .circular
         confirm.toolTip = "Crop to this region — ⏎ or C"
+        confirm.setAccessibilityLabel("Crop to selection")
         let cancel = NSButton(title: "✕", target: self, action: #selector(cancelCropTapped))
         cancel.bezelStyle = .circular
         cancel.toolTip = "Discard this selection — esc"
+        cancel.setAccessibilityLabel("Cancel crop")
 
         // Prefer just beneath the selection's right edge, but clamp into the
         // view: a narrow crop near an edge would otherwise put the buttons
@@ -272,7 +274,10 @@ final class CanvasView: NSView, NSTextFieldDelegate {
         let field = NSTextField(frame: box)
         field.font = NSFont(name: style.fontName, size: viewFontSize) ?? .boldSystemFont(ofSize: viewFontSize)
         field.textColor = NSColor(cgColor: style.color)
-        field.backgroundColor = NSColor.white.withAlphaComponent(0.88)
+        // White or yellow text on the light backdrop is close to invisible.
+        field.backgroundColor = color.isLight
+            ? NSColor.black.withAlphaComponent(0.72)
+            : NSColor.white.withAlphaComponent(0.88)
         field.isBordered = false
         field.focusRingType = .none
         field.placeholderString = "type, then ⏎"

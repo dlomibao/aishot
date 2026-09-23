@@ -14,6 +14,7 @@ final class SwatchButton: NSButton {
         isBordered = false
         title = ""
         toolTip = color.name.capitalized
+        setAccessibilityLabel("\(color.name.capitalized) colour")
         setContentHuggingPriority(.required, for: .horizontal)
         widthAnchor.constraint(equalToConstant: 26).isActive = true
         heightAnchor.constraint(equalToConstant: 26).isActive = true
@@ -22,7 +23,10 @@ final class SwatchButton: NSButton {
     required init?(coder: NSCoder) { fatalError("not used") }
 
     var isSelected = false {
-        didSet { needsDisplay = true }
+        didSet {
+            needsDisplay = true
+            setAccessibilityValue(isSelected ? "selected" : nil)
+        }
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -51,14 +55,18 @@ final class SwatchButton: NSButton {
 /// A button title with its shortcut trailing in smaller, dimmer type. Keeps the
 /// hint visible without the width cost of setting it at full size — the toolbar
 /// is what sets the window's minimum width.
-func titleWithHint(_ title: String, _ hint: String) -> NSAttributedString {
+///
+/// An attributed title ignores `contentTintColor`, so a selected button has to
+/// get its contrasting colours here to be distinguishable at all. The weight
+/// stays the same so selecting a tool never changes the toolbar's width.
+func titleWithHint(_ title: String, _ hint: String, selected: Bool = false) -> NSAttributedString {
     let result = NSMutableAttributedString(string: title, attributes: [
         .font: NSFont.systemFont(ofSize: NSFont.systemFontSize),
-        .foregroundColor: NSColor.labelColor,
+        .foregroundColor: selected ? NSColor.white : NSColor.labelColor,
     ])
     result.append(NSAttributedString(string: "  \(hint)", attributes: [
         .font: NSFont.systemFont(ofSize: 10, weight: .medium),
-        .foregroundColor: NSColor.secondaryLabelColor,
+        .foregroundColor: selected ? NSColor.white.withAlphaComponent(0.75) : NSColor.secondaryLabelColor,
     ]))
     return result
 }
