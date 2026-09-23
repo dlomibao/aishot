@@ -6,10 +6,12 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
     private let canvas: CanvasView
     private let toolbar = NSStackView()
     private let styleBar = NSStackView()
-    private var toolButtons: [Tool: NSButton] = [:]
+    private var toolPicker: NSSegmentedControl!
     private var swatches: [SwatchButton] = []
     private var sizeControl: NSSegmentedControl!
+    private var copySizeMenu: NSPopUpButton!
     private var undoButton: NSButton!
+    private var redoButton: NSButton!
     private let onFinish: @MainActor (Data?) -> Void
     var onRequestReload: (@MainActor () -> Void)?
 
@@ -130,36 +132,20 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
             toolbar.heightAnchor.constraint(equalToConstant: Self.rowHeight - 10),
         ])
 
-        for tool in Tool.allCases {
-            let button = NSButton(title: tool.label, target: self, action: #selector(toolTapped(_:)))
-            button.attributedTitle = titleWithHint(tool.label, "\(tool.rawValue)")
-            button.bezelStyle = .rounded
-            button.tag = tool.rawValue
-            button.toolTip = "\(tool.label) — press \(tool.rawValue)"
-            toolButtons[tool] = button
-            toolbar.addArrangedSubview(button)
+        // A segmented control is the native macOS tool picker: narrow, with a
+        // selected state that follows the window's key status on its own. The
+        // shortcut sits beside each icon; the name is in the tooltip.
+        toolPicker = NSSegmentedControl(images: Tool.toolbarOrder.map { tool in
+            NSImage(systemSymbolName: tool.symbolName, accessibilityDescription: tool.label) ?? NSImage()
+        }, trackingMode: .selectOne, target: self, action: #selector(toolPicked(_:)))
+        for (index, tool) in Tool.toolbarOrder.enumerated() {
+            toolPicker.setLabel(tool.shortcut, forSegment: index)
+            toolPicker.setToolTip("\(tool.label) — press \(tool.shortcut)", forSegment: index)
         }
+        toolPicker.setAccessibilityLabel("Tools")
+        toolbar.addArrangedSubview(toolPicker)
 
         toolbar.addArrangedSubview(NSView())
-
-        let reload = NSButton(title: "Reload", target: self, action: #selector(pasteAction))
-        reload.attributedTitle = titleWithHint("Reload", "⌘V")
-        reload.bezelStyle = .rounded
-        reload.toolTip = "⌘V — load the image currently on the clipboard"
-        toolbar.addArrangedSubview(reload)
-
-        undoButton = NSButton(title: "Undo", target: self, action: #selector(undoTapped))
-        undoButton.attributedTitle = titleWithHint("Undo", "⌘Z")
-        undoButton.bezelStyle = .rounded
-        undoButton.toolTip = "⌘Z — remove the last annotation"
-        undoButton.isEnabled = false
-        toolbar.addArrangedSubview(undoButton)
-
-        let save = NSButton(title: "Save…", target: self, action: #selector(saveAction))
-        save.attributedTitle = titleWithHint("Save…", "⌘S")
-        save.bezelStyle = .rounded
-        save.toolTip = "⌘S — write a PNG somewhere and keep editing"
-        toolbar.addArrangedSubview(save)
 
         let cancel = NSButton(title: "Cancel", target: self, action: #selector(cancelTapped))
         cancel.attributedTitle = titleWithHint("Cancel", "esc")
@@ -170,9 +156,20 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
         let done = NSButton(title: "Copy", target: self, action: #selector(doneTapped))
         done.attributedTitle = titleWithHint("Copy", "⏎")
         done.bezelStyle = .rounded
-        done.toolTip = "⏎ — copy the annotated image and close"
+        done.toolTip = "⏎ — copy the annotated image and close. ⌘C copies without closing."
         done.keyEquivalent = "\r"
         toolbar.addArrangedSubview(done)
+    }
+
+    /// Standard ⌘ shortcuts, so the hint lives in the tooltip rather than
+    /// taking toolbar width.
+    private func iconButton(_ symbol: String, label: String, tip: String, action: Selector) -> NSButton {
+        let button = NSButton(image: NSImage(systemSymbolName: symbol, accessibilityDescription: label) ?? NSImage(),
+                              target: self, action: action)
+        button.bezelStyle = .rounded
+        button.toolTip = tip
+        button.setAccessibilityLabel(label)
+        return button
     }
 
     private func buildStyleRow(in bar: NSView) {
@@ -216,6 +213,49 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
         sizeHint.textColor = .tertiaryLabelColor
         sizeHint.setAccessibilityElement(false)
         styleBar.addArrangedSubview(sizeHint)
+
+        styleBar.addArrangedSubview(NSView())
+
+        let copyLabel = NSTextField(labelWithString: "Copy at")
+        copyLabel.font = .systemFont(ofSize: 11)
+        copyLabel.textColor = .secondaryLabelColor
+        copyLabel.setAccessibilityElement(false)
+        styleBar.addArrangedSubview(copyLabel)
+
+        copySizeMenu = NSPopUpButton(frame: .zero, pullsDown: false)
+        copySizeMenu.controlSize = .small
+        copySizeMenu.font = .systemFont(ofSize: 11)
+        for size in ExportSize.allCases {
+            copySizeMenu.addItem(withTitle: size.label)
+            copySizeMenu.lastItem?.representedObject = size.rawValue
+        }
+        copySizeMenu.selectItem(at: ExportSize.allCases.firstIndex(of: Preferences.copySize) ?? 0)
+        copySizeMenu.target = self
+        copySizeMenu.action = #selector(copySizeChanged(_:))
+        copySizeMenu.toolTip = "Largest edge of the copied image. Vision models bill by pixel area, "
+            + "so a smaller copy is cheaper to paste. Save always keeps full resolution."
+        copySizeMenu.setAccessibilityLabel("Copied image size")
+        styleBar.addArrangedSubview(copySizeMenu)
+
+        let reload = iconButton("arrow.clockwise", label: "Reload",
+                                tip: "Reload — ⌘V loads the image currently on the clipboard",
+                                action: #selector(pasteAction))
+        undoButton = iconButton("arrow.uturn.backward", label: "Undo", tip: "Undo — ⌘Z", action: #selector(undoTapped))
+        redoButton = iconButton("arrow.uturn.forward", label: "Redo", tip: "Redo — ⇧⌘Z", action: #selector(redoTapped))
+        let save = iconButton("square.and.arrow.down", label: "Save",
+                              tip: "Save — ⌘S writes a full-resolution PNG and keeps editing",
+                              action: #selector(saveAction))
+        undoButton.isEnabled = false
+        redoButton.isEnabled = false
+        styleBar.setCustomSpacing(12, after: copySizeMenu)
+        for button in [reload, undoButton!, redoButton!, save] { styleBar.addArrangedSubview(button) }
+    }
+
+    @objc private func copySizeChanged(_ sender: NSPopUpButton) {
+        guard let raw = sender.selectedItem?.representedObject as? String,
+              let size = ExportSize(rawValue: raw) else { return }
+        Preferences.copySize = size
+        window?.makeFirstResponder(canvas)
     }
 
     func show() {
@@ -226,9 +266,9 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
 
     // MARK: - Actions
 
-    @objc private func toolTapped(_ sender: NSButton) {
-        guard let tool = Tool(rawValue: sender.tag) else { return }
-        select(tool: tool)
+    @objc private func toolPicked(_ sender: NSSegmentedControl) {
+        guard Tool.toolbarOrder.indices.contains(sender.selectedSegment) else { return }
+        select(tool: Tool.toolbarOrder[sender.selectedSegment])
     }
 
     private func select(tool: Tool) {
@@ -237,22 +277,9 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
         window?.makeFirstResponder(canvas)
     }
 
-    /// AppKit draws an accent bezel grey while the window is inactive, so the
-    /// white title is only used while the window is key; otherwise it would be
-    /// white on light grey.
     private func refreshToolButtons() {
-        let active = window?.isKeyWindow ?? true
-        for (candidate, button) in toolButtons {
-            let selected = candidate == canvas.tool
-            button.bezelColor = selected ? .controlAccentColor : nil
-            button.attributedTitle = titleWithHint(candidate.label, "\(candidate.rawValue)",
-                                                   selected: selected && active)
-            button.setAccessibilityValue(selected ? "selected" : nil)
-        }
+        toolPicker.selectedSegment = Tool.toolbarOrder.firstIndex(of: canvas.tool) ?? -1
     }
-
-    func windowDidBecomeKey(_ notification: Notification) { refreshToolButtons() }
-    func windowDidResignKey(_ notification: Notification) { refreshToolButtons() }
 
     @objc private func swatchTapped(_ sender: SwatchButton) {
         select(color: sender.markupColor)
@@ -279,12 +306,48 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
     }
 
     @objc private func undoTapped() { canvas.undo() }
+    @objc private func redoTapped() { canvas.redo() }
+
+    /// Edit-menu shortcuts reach the app delegate even while the Save panel's
+    /// filename field, or a text box on the canvas, has focus. Those keystrokes
+    /// belong to the text, not to the image.
+    private var focusedText: NSText? {
+        NSApp.keyWindow?.firstResponder as? NSText
+    }
+
+    func performUndo() {
+        if let text = focusedText { text.undoManager?.undo(); return }
+        canvas.undo()
+    }
+
+    func performRedo() {
+        if let text = focusedText { text.undoManager?.redo(); return }
+        canvas.redo()
+    }
+
+    /// ⌘C copies without closing, for back-and-forth sessions. Inside a text
+    /// field it copies the selected text, as it would anywhere else.
+    func copyWithoutClosing() {
+        if let text = focusedText {
+            text.copy(nil)
+            return
+        }
+        if canvas.hasPendingCrop { canvas.confirmCrop() }
+        let size = Preferences.copySize
+        guard let png = canvas.exportPNG(size: size) else {
+            presentError("Could not render the image.")
+            return
+        }
+        Pasteboard.write(png: png)
+        OutputFile.save(png: png)
+        window?.subtitle = size == .original ? "Copied" : "Copied at \(size.label)"
+    }
 
     /// ⌘V means "paste text" inside a text field and "load the newer screenshot"
     /// everywhere else.
     @objc func pasteAction() {
-        if canvas.isEditingText {
-            canvas.pasteIntoTextEditor()
+        if let text = focusedText {
+            text.paste(nil)
             return
         }
         guard confirmDiscardingMarkup() else { return }
@@ -323,8 +386,6 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
         window?.orderOut(nil)
         window?.delegate = nil
     }
-
-    func undoTappedFromMenu() { canvas.undo() }
 
     /// Unlike Copy, saving is not a terminal action — the window stays up so you
     /// can keep annotating or save a second copy elsewhere.
@@ -381,7 +442,7 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
             canvas.confirmCrop()
             return
         }
-        finish(with: canvas.exportPNG())
+        finish(with: canvas.exportPNG(size: Preferences.copySize))
     }
 
     private var hasFinished = false
@@ -400,6 +461,7 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
 
     func canvasDidChange(_ view: CanvasView) {
         undoButton.isEnabled = view.canUndo
+        redoButton.isEnabled = view.canRedo
         window?.subtitle = ""
     }
 
@@ -426,13 +488,22 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
         // Some other text control has focus; its keys are not tool shortcuts.
         if window.firstResponder is NSText { return false }
 
-        // esc backs out of a pending crop before it cancels the whole editor.
+        // esc backs out of the smallest thing first: a selection, then a
+        // pending crop, and only then the whole editor.
         if event.keyCode == 53 {
+            if canvas.clearSelection() { return true }
             if canvas.cancelPendingCrop() { return true }
             cancelTapped()
             return true
         }
         guard !event.modifierFlags.contains(.command) else { return false }
+
+        // Delete and forward-delete remove the selected shape.
+        if event.keyCode == 51 || event.keyCode == 117 {
+            guard canvas.hasSelection else { return false }
+            canvas.deleteSelection()
+            return true
+        }
 
         let keys = event.charactersIgnoringModifiers ?? ""
         if let digit = Int(keys), let tool = Tool(rawValue: digit) {
@@ -440,6 +511,7 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
             return true
         }
         switch keys.lowercased() {
+        case "v": select(tool: .select); return true
         // C confirms a pending crop; colour cycling is suppressed until it is
         // resolved, since confirming is the only thing you want at that moment.
         case "c":
@@ -452,6 +524,3 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
     }
 }
 
-extension EditorWindowController {
-    func performUndo() { undoTappedFromMenu() }
-}

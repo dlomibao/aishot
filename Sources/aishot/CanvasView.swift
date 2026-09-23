@@ -466,10 +466,6 @@ final class CanvasView: NSView, NSTextFieldDelegate {
         changed()
     }
 
-    func pasteIntoTextEditor() {
-        textEditor?.currentEditor()?.paste(nil)
-    }
-
     // MARK: - Commands
 
     /// Anything that would be lost by closing: committed operations, or text
