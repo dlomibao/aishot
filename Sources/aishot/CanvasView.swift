@@ -349,12 +349,23 @@ final class CanvasView: NSView, NSTextFieldDelegate {
 
     // MARK: - Commands
 
+    /// Anything that would be lost by closing: committed operations, or text
+    /// still being typed.
+    var hasMarkup: Bool {
+        canUndo || !(textEditor?.stringValue.isEmpty ?? true)
+    }
+
+    func discardPendingText() {
+        textEditor?.removeFromSuperview()
+        textEditor = nil
+        textEditorBox = nil
+        window?.makeFirstResponder(self)
+    }
+
     func undo() {
-        if textEditor != nil {
-            textEditor?.removeFromSuperview()
-            textEditor = nil
-            textEditorBox = nil
-            window?.makeFirstResponder(self)
+        // While typing, ⌘Z belongs to the text, as in any other text field.
+        if let editor = textEditor?.currentEditor() {
+            editor.undoManager?.undo()
             return
         }
         if pendingCrop != nil {
