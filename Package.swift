@@ -8,5 +8,6 @@ let package = Package(
         .target(name: "AIShotCore"),
         .executableTarget(name: "aishot", dependencies: ["AIShotCore"]),
         .testTarget(name: "AIShotCoreTests", dependencies: ["AIShotCore"]),
+        .testTarget(name: "AIShotAppTests", dependencies: ["aishot", "AIShotCore"]),
     ]
 )
