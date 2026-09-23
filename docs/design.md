@@ -124,6 +124,50 @@ Line breaking is set to word wrapping explicitly. CoreText still breaks a token
 too long to fit on its own line, which a test pins, since a pasted URL would
 otherwise run past the box edge.
 
+## Undo keeps copies of the document
+
+Undo used to pop the last operation, which worked while every edit was an
+append. Moving and deleting a shape are not appends, so the document now keeps
+a copy of its whole state (shapes plus crop) before each edit. Undo and redo
+swap copies, and any new edit clears the redo list. The state is a handful of
+shapes, so the memory cost does not matter, and every kind of edit is undoable
+without its own reverse operation. `undo()` and `redo()` report whether the
+crop changed, since that is the one case where the window has to resize.
+
+A move changes the document only on mouse-up. While dragging, the canvas draws
+the shape at its in-progress offset, so a whole drag is one undo step.
+
+## Selection
+
+The Select tool, or ⌘-click from any tool, picks the topmost shape under the
+pointer. Outlined shapes (arrows, boxes) are hit on their stroke, and filled
+shapes (redactions, highlights, badges, text) anywhere inside, so a box drawn
+around a region does not steal clicks meant for shapes inside it. The selection
+is an index into the shape list, so undo, redo and delete clear it rather than
+risk it pointing at a different shape afterwards.
+
+Badge numbers continue from the highest badge on the canvas. Deleting one from
+the middle leaves a gap rather than renumbering the rest, because you may
+already be referring to them by number.
+
+## Copy size
+
+The copy is rendered at full resolution and then scaled, so strokes and text
+are resampled along with the screenshot instead of being drawn at a size they
+were never styled for. The cap applies to Copy and ⌘C only; Save keeps full
+resolution. 1568px is the default: current Claude models accept up to 2576px
+on the long edge, and image cost grows with pixel area, so 1568 costs roughly half
+as much as a full Retina window grab (about 2,200 image tokens against 4,800)
+while code stays readable.
+
+## Toolbar
+
+Tools are a segmented control, the native macOS tool picker, with each
+shortcut beside its icon. It handles its own selected state when the window is
+inactive and cut the minimum window width from about 920pt to about 630pt.
+Cancel and Copy keep text labels because they are the two ways out; Reload,
+Undo, Redo and Save are icons whose standard ⌘ shortcuts live in tooltips.
+
 ## Decisions
 
 **Redaction uses `.copy` blend mode.** A composited black rect would still be
