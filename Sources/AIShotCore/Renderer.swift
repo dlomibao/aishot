@@ -19,6 +19,7 @@ public enum Renderer {
             case let .text(box, string):   drawText(string, in: box, ctx: ctx, style: style)
             case let .badge(center, n):    drawBadge(n, at: center, in: ctx, style: style)
             case let .redact(rect):        drawRedaction(rect, in: ctx)
+            case let .highlight(rect):     drawHighlight(rect, in: ctx, style: style)
             }
             ctx.restoreGState()
         }
@@ -75,6 +76,16 @@ public enum Renderer {
         ctx.setLineWidth(style.lineWidth)
         ctx.setLineJoin(.round)
         ctx.stroke(rect.insetBy(dx: style.lineWidth / 2, dy: style.lineWidth / 2))
+    }
+
+    /// Normal blending at low opacity rather than multiply: multiply is the
+    /// classic highlighter look on white paper, but it all but disappears on
+    /// a dark editor theme, which is most code screenshots.
+    static let highlightOpacity: CGFloat = 0.38
+
+    private static func drawHighlight(_ rect: CGRect, in ctx: CGContext, style: Style) {
+        ctx.setFillColor(style.color.copy(alpha: highlightOpacity) ?? style.color)
+        ctx.fill(rect)
     }
 
     private static func drawRedaction(_ rect: CGRect, in ctx: CGContext) {
