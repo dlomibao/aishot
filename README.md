@@ -25,21 +25,44 @@ in the lower right, no, the other one" becomes an arrow.
 1. **`⌃⇧⌘4`** — drag a region. macOS copies it to the clipboard.
 2. **Your hotkey** — the editor opens on that image.
 3. Mark it up.
-4. **`⏎`** — the annotated image is on your clipboard. Paste it.
+4. **`⏎`** — the annotated image is on your clipboard, sized for an AI tool. Paste it.
 
 | Key | |
 |---|---|
-| `1` … `6` | arrow, box, text, number badge, redact, crop |
+| `V` | select: click a shape to select it, drag to move it |
+| `1` … `7` | arrow, box, text, number badge, redact, crop, highlight |
+| `⌘`-click | select a shape without leaving the tool you are using |
+| `delete` | remove the selected shape |
+| `⇧` while dragging | arrows snap to 45°, rectangles become squares |
 | `C` | cycle colour |
 | `[` `]` | smaller / larger stroke and text |
-| `⌘Z` | undo — walks back through crops as well as annotations; while typing, undoes the typing |
+| `⌘Z` / `⇧⌘Z` | undo / redo — covers moves, deletes and crops; while typing, undoes the typing |
+| `⌘C` | copy the annotated image and keep editing |
 | `⌘V` | load the screenshot now on the clipboard |
 | `⌘S` | save a PNG to `~/Downloads`, keep editing |
 | `⇧⏎` `⌥⏎` `⌃⏎` | line break while typing text |
 | `⏎` | copy annotated image and close |
-| `esc` | cancel, leaving the clipboard untouched — asks first if you have drawn anything; while typing, discards just that text box |
+| `esc` | clears a selection first; otherwise cancels, leaving the clipboard untouched — asks first if you have drawn anything; while typing, discards just that text box |
 
-Arrows, boxes, redactions, text boxes and crops are drag; badges are click.
+Arrows, boxes, highlights, redactions, text boxes and crops are drag; badges are click.
+
+**Fix a shape without starting over.** Pick the Select tool (`V`), or hold `⌘`
+from any tool, and click a shape to select it. Drag to move it, press `delete`
+to remove it. Arrows and boxes are picked up by their outline, so a box drawn
+around something does not get in the way of what is inside it. A whole drag is
+one undo step.
+
+**Highlight lines of code.** The highlighter (`7`) drags a translucent band in
+the current colour. It uses normal blending rather than a multiply "marker"
+effect, because multiply all but disappears on a dark editor theme.
+
+**Copies are sized for AI tools.** Vision models bill by pixel area, and a full
+Retina window grab is far bigger than the model needs to read it. The **Copy
+at** menu caps the copied image's long edge — 1568px by default, which keeps
+code readable at roughly half the image tokens of a full Retina window grab. Current
+Claude models read up to 2576px without scaling it down; 1280px, about a
+third of the cost, still suits layout feedback. Small crops are never
+enlarged, and **Save always writes full resolution**.
 
 **Text wraps inside the box you drag.** Drag out a width with the Text tool and
 the text wraps within it, growing downward as you type — long notes no longer
@@ -53,9 +76,10 @@ with ✓ and ✕ buttons by the selection. `⏎` or `C` confirms, `esc` discards
 selection without touching the image. Cropping keeps your existing markup and
 is undoable — `⌘Z` restores the previous framing, so a mis-crop costs nothing.
 
-**Keep the window open across shots.** `⌃⇧⌘4` again, then `⌘V` swaps in the new
-screenshot without relaunching. It asks first if you have already drawn
-something.
+**Keep the window open across shots.** `⌘C` copies without closing, for a
+back-and-forth session where you paste, read the answer, and adjust. `⌃⇧⌘4`
+again, then `⌘V` swaps in the new screenshot without relaunching. It asks first
+if you have already drawn something.
 
 **Style applies to what you draw next.** Each shape keeps the colour and size
 it was drawn with, so a yellow note can sit beside a red arrow. Markup is sized
