@@ -95,9 +95,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let editItem = NSMenuItem()
         let editMenu = NSMenu(title: "Edit")
         editMenu.addItem(withTitle: "Undo", action: #selector(undoAnnotation), keyEquivalent: "z")
+        let redo = editMenu.addItem(withTitle: "Redo", action: #selector(redoAnnotation), keyEquivalent: "z")
+        redo.keyEquivalentModifierMask = [.command, .shift]
         editMenu.addItem(.separator())
         editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
-        editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: "Copy", action: #selector(copyImage), keyEquivalent: "c")
         editMenu.addItem(withTitle: "New Image from Clipboard", action: #selector(pasteFromClipboard), keyEquivalent: "v")
         editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         editItem.submenu = editMenu
@@ -108,6 +110,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func undoAnnotation() {
         controller?.performUndo()
+    }
+
+    @objc private func redoAnnotation() {
+        controller?.performRedo()
+    }
+
+    @objc private func copyImage() {
+        controller?.copyWithoutClosing()
     }
 
     @objc private func pasteFromClipboard() {

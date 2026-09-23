@@ -76,10 +76,16 @@ func titleWithHint(_ title: String, _ hint: String, selected: Bool = false) -> N
 enum Preferences {
     private static let colorKey = "markupColor"
     private static let sizeKey = "markupSize"
+    private static let copySizeKey = "copySize"
 
     static var color: MarkupColor {
         get { MarkupColor.named(UserDefaults.standard.string(forKey: colorKey) ?? "") ?? .red }
         set { UserDefaults.standard.set(newValue.name, forKey: colorKey) }
+    }
+
+    static var copySize: ExportSize {
+        get { ExportSize(rawValue: UserDefaults.standard.string(forKey: copySizeKey) ?? "") ?? .defaultForCopy }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: copySizeKey) }
     }
 
     static var sizeClass: SizeClass {
@@ -87,4 +93,20 @@ enum Preferences {
         set { UserDefaults.standard.set(newValue.rawValue, forKey: sizeKey) }
     }
 
+}
+
+
+extension Tool {
+    var symbolName: String {
+        switch self {
+        case .select: return "cursorarrow"
+        case .arrow: return "arrow.up.right"
+        case .box: return "rectangle"
+        case .highlight: return "highlighter"
+        case .text: return "textformat"
+        case .badge: return "1.circle"
+        case .redact: return "eye.slash"
+        case .crop: return "crop"
+        }
+    }
 }
