@@ -48,6 +48,17 @@ public struct MarkupColor: Equatable, Sendable {
 
     public var cgColor: CGColor { CGColor(red: red, green: green, blue: blue, alpha: 1) }
 
+    /// WCAG relative luminance, from linearized sRGB channels.
+    public var relativeLuminance: CGFloat {
+        func linear(_ c: CGFloat) -> CGFloat {
+            c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue)
+    }
+
+    /// Light enough that text in this colour needs a dark backdrop to read.
+    public var isLight: Bool { relativeLuminance > 0.5 }
+
     public static let red = MarkupColor(name: "red", red: 0.91, green: 0.15, blue: 0.13)
     public static let orange = MarkupColor(name: "orange", red: 0.98, green: 0.52, blue: 0.09)
     public static let yellow = MarkupColor(name: "yellow", red: 0.98, green: 0.82, blue: 0.11)

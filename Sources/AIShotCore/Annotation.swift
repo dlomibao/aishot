@@ -13,6 +13,24 @@ public enum Annotation: Equatable, Sendable {
     case redact(CGRect)
 }
 
+extension Annotation {
+    /// A shape too small to see or point at anything — usually a click that
+    /// was meant to select a tool rather than draw. `minimum` is in image
+    /// pixels, so callers scale it from screen points.
+    public func isDegenerate(minimum: CGFloat) -> Bool {
+        switch self {
+        case let .arrow(from, to):
+            return hypot(to.x - from.x, to.y - from.y) < minimum
+        case let .box(rect), let .redact(rect):
+            return rect.width < minimum || rect.height < minimum
+        case let .text(_, string):
+            return string.isEmpty
+        case .badge:
+            return false
+        }
+    }
+}
+
 public enum Tool: Int, CaseIterable, Sendable {
     case arrow = 1, box, text, badge, redact, crop
 
