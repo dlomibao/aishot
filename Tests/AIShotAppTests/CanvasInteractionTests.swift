@@ -187,6 +187,50 @@ final class CanvasInteractionTests: XCTestCase {
         XCTAssertFalse(try isYellowTinted(at: CGPoint(x: 275, y: 80)))
     }
 
+    // MARK: - Cropping
+
+    /// Regression: after a small crop the window stays wide enough for the
+    /// toolbar, and the canvas drew the whole screenshot shifted by the crop.
+    /// With views no longer clipping by default, the uncropped image showed on
+    /// both sides of the cropped one.
+    func testACroppedCanvasNeverPaintsBeyondItsEdges() throws {
+        let red = try XCTUnwrap(CGContext(data: nil, width: 400, height: 300, bitsPerComponent: 8, bytesPerRow: 0,
+                                          space: CGColorSpaceCreateDeviceRGB(),
+                                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        red.setFillColor(CGColor(red: 1, green: 0, blue: 0, alpha: 1))
+        red.fill(CGRect(x: 0, y: 0, width: 400, height: 300))
+        let small = CanvasView(image: try XCTUnwrap(red.makeImage()), frame: NSRect(x: 250, y: 100, width: 100, height: 100))
+        window.contentView?.addSubview(small)
+
+        small.tool = .crop
+        small.mouseDown(with: event(.leftMouseDown, CGPoint(x: 275, y: 125), []))
+        small.mouseDragged(with: event(.leftMouseDragged, CGPoint(x: 325, y: 175), []))
+        small.mouseUp(with: event(.leftMouseUp, CGPoint(x: 325, y: 175), []))
+        small.confirmCrop()
+
+        // Draw into a bitmap wider than the canvas, with a dirty rect to match,
+        // the way AppKit may call draw() when a view does not clip.
+        let bitmap = try XCTUnwrap(CGContext(data: nil, width: 600, height: 300, bitsPerComponent: 8, bytesPerRow: 0,
+                                             space: CGColorSpaceCreateDeviceRGB(),
+                                             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        bitmap.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+        bitmap.fill(CGRect(x: 0, y: 0, width: 600, height: 300))
+        bitmap.translateBy(x: 250, y: 100)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: bitmap, flipped: false)
+        small.draw(NSRect(x: -250, y: -100, width: 600, height: 300))
+        NSGraphicsContext.restoreGraphicsState()
+
+        let px = pixels(of: try XCTUnwrap(bitmap.makeImage()))
+        func isRed(_ x: Int, _ y: Int) -> Bool {
+            let i = ((299 - y) * 600 + x) * 4
+            return px[i] > 200 && px[i + 1] < 80
+        }
+        XCTAssertTrue(isRed(300, 150), "the cropped region itself is drawn")
+        XCTAssertFalse(isRed(230, 150), "nothing may be drawn left of the canvas")
+        XCTAssertFalse(isRed(370, 150), "nothing may be drawn right of the canvas")
+    }
+
     // MARK: - Export
 
     func testASmallImageIsNotEnlargedByTheCopyCap() throws {

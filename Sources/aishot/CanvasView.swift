@@ -79,6 +79,10 @@ final class CanvasView: NSView, NSTextFieldDelegate {
     init(image: CGImage, frame: NSRect) {
         self.baseImage = image
         super.init(frame: frame)
+        // Views stopped clipping by default in macOS 14. The canvas draws the
+        // whole screenshot shifted by the crop, so without this a small crop
+        // shows the uncropped image in the window space beside it.
+        if #available(macOS 14.0, *) { clipsToBounds = true }
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
@@ -107,6 +111,9 @@ final class CanvasView: NSView, NSTextFieldDelegate {
 
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
+        // AppKit can pass a dirty rect larger than the view; never paint past
+        // the canvas edge whatever the clipping setting.
+        ctx.clip(to: bounds)
         ctx.interpolationQuality = .high
 
         ctx.saveGState()
