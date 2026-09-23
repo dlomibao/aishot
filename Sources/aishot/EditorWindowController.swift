@@ -88,20 +88,34 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
             canvasHeight,
         ])
 
-        resizeWindow(canvasSize: canvasSize)
+        resizeWindow(canvasSize: canvasSize, recenter: true)
     }
 
     /// Re-run whenever the image's dimensions change, which cropping does.
-    private func resizeWindow(canvasSize: CGSize) {
+    /// Later resizes keep the top-left corner where it was: re-centring made
+    /// the window jump away from wherever you had moved it.
+    private func resizeWindow(canvasSize: CGSize, recenter: Bool) {
         guard let window else { return }
         let chromeWidth = max(toolbar.fittingSize.width, styleBar.fittingSize.width) + Self.barMargin * 2
         let width = max(canvasSize.width, chromeWidth).rounded()
+        let topLeft = NSPoint(x: window.frame.minX, y: window.frame.maxY)
 
         canvasWidth.constant = canvasSize.width
         canvasHeight.constant = canvasSize.height
         window.setContentSize(NSSize(width: width, height: canvasSize.height + Self.toolbarHeight))
         window.contentView?.layoutSubtreeIfNeeded()
-        window.center()
+
+        if recenter {
+            window.center()
+            return
+        }
+        var frame = window.frame
+        frame.origin = NSPoint(x: topLeft.x, y: topLeft.y - frame.height)
+        if let visible = (window.screen ?? NSScreen.main)?.visibleFrame {
+            frame.origin.x = min(max(frame.minX, visible.minX), visible.maxX - frame.width)
+            frame.origin.y = min(max(frame.minY, visible.minY), visible.maxY - frame.height)
+        }
+        window.setFrame(frame, display: true)
     }
 
     private func buildToolRow(in bar: NSView) {
@@ -182,6 +196,7 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
         colorHint.font = .systemFont(ofSize: 10)
         colorHint.textColor = .tertiaryLabelColor
         colorHint.toolTip = "Press C to cycle colours"
+        colorHint.setAccessibilityElement(false)
         styleBar.addArrangedSubview(colorHint)
 
         styleBar.addArrangedSubview(NSView())
@@ -190,11 +205,16 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
                                          trackingMode: .selectOne,
                                          target: self, action: #selector(sizeChanged(_:)))
         sizeControl.toolTip = "Stroke and text size — [ and ] to step"
+        for (index, name) in ["Small", "Medium", "Large"].enumerated() {
+            sizeControl.setToolTip(name, forSegment: index)
+        }
+        sizeControl.setAccessibilityLabel("Markup size")
         styleBar.addArrangedSubview(sizeControl)
 
         let sizeHint = NSTextField(labelWithString: "[ ]")
         sizeHint.font = .systemFont(ofSize: 10)
         sizeHint.textColor = .tertiaryLabelColor
+        sizeHint.setAccessibilityElement(false)
         styleBar.addArrangedSubview(sizeHint)
     }
 
@@ -213,13 +233,26 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
 
     private func select(tool: Tool) {
         canvas.tool = tool
-        for (candidate, button) in toolButtons {
-            button.state = candidate == tool ? .on : .off
-            button.bezelStyle = .rounded
-            button.contentTintColor = candidate == tool ? .controlAccentColor : nil
-        }
+        refreshToolButtons()
         window?.makeFirstResponder(canvas)
     }
+
+    /// AppKit draws an accent bezel grey while the window is inactive, so the
+    /// white title is only used while the window is key; otherwise it would be
+    /// white on light grey.
+    private func refreshToolButtons() {
+        let active = window?.isKeyWindow ?? true
+        for (candidate, button) in toolButtons {
+            let selected = candidate == canvas.tool
+            button.bezelColor = selected ? .controlAccentColor : nil
+            button.attributedTitle = titleWithHint(candidate.label, "\(candidate.rawValue)",
+                                                   selected: selected && active)
+            button.setAccessibilityValue(selected ? "selected" : nil)
+        }
+    }
+
+    func windowDidBecomeKey(_ notification: Notification) { refreshToolButtons() }
+    func windowDidResignKey(_ notification: Notification) { refreshToolButtons() }
 
     @objc private func swatchTapped(_ sender: SwatchButton) {
         select(color: sender.markupColor)
@@ -373,7 +406,7 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
     /// A crop (or undoing one) changes the image's dimensions, so the window
     /// has to grow or shrink around it.
     func canvasDidChangeBounds(_ view: CanvasView) {
-        resizeWindow(canvasSize: Self.canvasSize(for: view.croppedBounds.size))
+        resizeWindow(canvasSize: Self.canvasSize(for: view.croppedBounds.size), recenter: false)
         window?.title = "aishot — \(Int(view.croppedBounds.width))×\(Int(view.croppedBounds.height))"
     }
 
