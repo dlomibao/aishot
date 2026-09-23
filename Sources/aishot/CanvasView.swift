@@ -23,6 +23,14 @@ final class CanvasView: NSView, NSTextFieldDelegate {
     private var textEditor: NSTextField?
     private var textEditorBox: CGRect?
 
+    /// Index into `document.annotations`. Cleared by anything that can
+    /// reorder or remove shapes, so it never points at the wrong one.
+    private var selectedIndex: Int?
+    /// True while dragging a selected shape; the document only changes on
+    /// mouse-up, so the whole drag is one undo step.
+    private var isMovingSelection = false
+    private var shiftHeld = false
+
     /// A crop waits for confirmation rather than applying on mouse-up.
     private var pendingCrop: CGRect?
     private var cropConfirm: NSButton?
@@ -32,13 +40,17 @@ final class CanvasView: NSView, NSTextFieldDelegate {
         didSet {
             commitPendingText()
             if oldValue == .crop { clearPendingCrop() }
+            if tool != .select { clearSelection() }
+            window?.invalidateCursorRects(for: self)
         }
     }
 
     var color: MarkupColor = .red { didSet { commitPendingText() } }
     var sizeClass: SizeClass = .medium { didSet { commitPendingText() } }
 
-    var canUndo: Bool { !document.isEmpty }
+    var canUndo: Bool { document.canUndo }
+    var canRedo: Bool { document.canRedo }
+    var hasSelection: Bool { selectedIndex != nil }
     var hasPendingCrop: Bool { pendingCrop != nil }
     var isEditingText: Bool { textEditor != nil }
 
@@ -103,10 +115,39 @@ final class CanvasView: NSView, NSTextFieldDelegate {
         ctx.translateBy(x: -croppedBounds.minX, y: -croppedBounds.minY)
         ctx.draw(baseImage, in: CGRect(origin: .zero, size: imagePixelSize))
         let pending = pendingAnnotation.map { [StyledAnnotation($0, style: style)] } ?? []
-        Renderer.draw(document.annotations + pending, in: ctx)
+        Renderer.draw(displayedAnnotations + pending, in: ctx)
         ctx.restoreGState()
 
+        drawSelectionOutline(in: ctx)
         drawCropOverlay(in: ctx)
+    }
+
+    /// The document's shapes, with the one being dragged shown at its
+    /// in-progress position.
+    private var displayedAnnotations: [StyledAnnotation] {
+        var shapes = document.annotations
+        if let index = selectedIndex, let offset = moveOffset, shapes.indices.contains(index) {
+            shapes[index].shape = shapes[index].shape.translated(by: offset)
+        }
+        return shapes
+    }
+
+    private var moveOffset: CGVector? {
+        guard isMovingSelection, let start = dragStart, let current = dragCurrent else { return nil }
+        let a = imagePoint(fromView: start), b = imagePoint(fromView: current)
+        return CGVector(dx: b.x - a.x, dy: b.y - a.y)
+    }
+
+    private func drawSelectionOutline(in ctx: CGContext) {
+        let shapes = displayedAnnotations
+        guard let index = selectedIndex, shapes.indices.contains(index) else { return }
+        let rect = viewRect(fromImage: shapes[index].bounds).insetBy(dx: -4, dy: -4)
+        ctx.saveGState()
+        ctx.setStrokeColor(NSColor.controlAccentColor.cgColor)
+        ctx.setLineWidth(1.5)
+        ctx.setLineDash(phase: 0, lengths: [5, 3])
+        ctx.stroke(rect)
+        ctx.restoreGState()
     }
 
     /// Dim everything outside the proposed crop so the result is obvious before
@@ -115,7 +156,7 @@ final class CanvasView: NSView, NSTextFieldDelegate {
         let selection: CGRect?
         if let pendingCrop {
             selection = viewRect(fromImage: pendingCrop)
-        } else if tool == .crop, let start = dragStart, let current = dragCurrent {
+        } else if tool == .crop, let start = dragStart, let current = constrainedCurrent {
             selection = normalizedRect(from: start, to: current)
         } else {
             selection = nil
@@ -134,15 +175,27 @@ final class CanvasView: NSView, NSTextFieldDelegate {
         ctx.restoreGState()
     }
 
+    /// The drag's end point after Shift is applied: 45° steps for arrows,
+    /// squares for rectangles.
+    private var constrainedCurrent: CGPoint? {
+        guard let start = dragStart, let current = dragCurrent else { return nil }
+        guard shiftHeld, !isMovingSelection else { return current }
+        if tool == .arrow { return Constrain.snapTo45Degrees(from: start, to: current) }
+        if tool.constrainsToSquare { return Constrain.square(from: start, to: current) }
+        return current
+    }
+
     private var pendingAnnotation: Annotation? {
-        guard let start = dragStart, let current = dragCurrent, tool.isDragBased, tool != .crop else { return nil }
+        guard !isMovingSelection, let start = dragStart, let current = constrainedCurrent,
+              tool.isDragBased, tool != .crop else { return nil }
         let a = imagePoint(fromView: start)
         let b = imagePoint(fromView: current)
         switch tool {
-        case .arrow:  return .arrow(from: a, to: b)
-        case .box:    return .box(normalizedRect(from: a, to: b))
-        case .redact: return .redact(normalizedRect(from: a, to: b))
-        default:      return nil
+        case .arrow:     return .arrow(from: a, to: b)
+        case .box:       return .box(normalizedRect(from: a, to: b))
+        case .redact:    return .redact(normalizedRect(from: a, to: b))
+        case .highlight: return .highlight(normalizedRect(from: a, to: b))
+        default:         return nil
         }
     }
 
@@ -151,7 +204,16 @@ final class CanvasView: NSView, NSTextFieldDelegate {
     override func mouseDown(with event: NSEvent) {
         commitPendingText()
         let point = convert(event.locationInWindow, from: nil)
+        shiftHeld = event.modifierFlags.contains(.shift)
         if tool == .crop { clearPendingCrop() }
+
+        // ⌘-click selects from any tool, so fixing one shape does not mean
+        // switching tools and back.
+        if tool == .select || event.modifierFlags.contains(.command) {
+            beginSelection(at: point)
+            return
+        }
+        clearSelection()
 
         switch tool {
         case .badge:
@@ -166,12 +228,25 @@ final class CanvasView: NSView, NSTextFieldDelegate {
     override func mouseDragged(with event: NSEvent) {
         guard dragStart != nil else { return }
         dragCurrent = convert(event.locationInWindow, from: nil)
+        shiftHeld = event.modifierFlags.contains(.shift)
         needsDisplay = true
     }
 
+    /// Lets Shift take effect mid-drag without moving the mouse.
+    override func flagsChanged(with event: NSEvent) {
+        shiftHeld = event.modifierFlags.contains(.shift)
+        if dragStart != nil { needsDisplay = true }
+        super.flagsChanged(with: event)
+    }
+
     override func mouseUp(with event: NSEvent) {
-        defer { dragStart = nil; dragCurrent = nil; needsDisplay = true }
-        guard let start = dragStart, let current = dragCurrent else { return }
+        defer { dragStart = nil; dragCurrent = nil; isMovingSelection = false; needsDisplay = true }
+        shiftHeld = event.modifierFlags.contains(.shift)
+        if isMovingSelection {
+            finishMove()
+            return
+        }
+        guard let start = dragStart, let current = constrainedCurrent else { return }
         let dragged = normalizedRect(from: start, to: current)
 
         switch tool {
@@ -193,6 +268,49 @@ final class CanvasView: NSView, NSTextFieldDelegate {
             document.add(annotation, style: style)
             changed()
         }
+    }
+
+    // MARK: - Selection
+
+    private func beginSelection(at point: CGPoint) {
+        let hit = document.annotations.indexOfShape(at: imagePoint(fromView: point),
+                                                    tolerance: 6 * transform.scale)
+        selectedIndex = hit
+        if hit != nil {
+            isMovingSelection = true
+            dragStart = point
+            dragCurrent = point
+        }
+        needsDisplay = true
+        delegate?.canvasDidChange(self)
+    }
+
+    private func finishMove() {
+        guard let index = selectedIndex, let offset = moveOffset else { return }
+        document.move(at: index, by: offset)
+        changed()
+    }
+
+    func deleteSelection() {
+        guard let index = selectedIndex else { return }
+        selectedIndex = nil
+        document.remove(at: index)
+        changed()
+    }
+
+    /// Returns true if there was a selection to clear, so esc can back out of
+    /// a selection before it means anything bigger.
+    @discardableResult
+    func clearSelection() -> Bool {
+        guard selectedIndex != nil else { return false }
+        selectedIndex = nil
+        needsDisplay = true
+        delegate?.canvasDidChange(self)
+        return true
+    }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: tool == .select ? .arrow : .crosshair)
     }
 
     // MARK: - Crop
@@ -377,16 +495,31 @@ final class CanvasView: NSView, NSTextFieldDelegate {
             clearPendingCrop()
             return
         }
-        let boundsChange = document.lastOperationIsCrop
-        document.undo()
-        if boundsChange { delegate?.canvasDidChangeBounds(self) }
+        applyHistoryStep(document.undo())
+    }
+
+    func redo() {
+        if let editor = textEditor?.currentEditor() {
+            editor.undoManager?.redo()
+            return
+        }
+        guard pendingCrop == nil else { return }
+        applyHistoryStep(document.redo())
+    }
+
+    /// A history step can remove or reorder shapes, so a remembered selection
+    /// index could point at the wrong one afterwards.
+    private func applyHistoryStep(_ cropChanged: Bool) {
+        selectedIndex = nil
+        if cropChanged { delegate?.canvasDidChangeBounds(self) }
         changed()
     }
 
-    func exportPNG() -> Data? {
+    func exportPNG(size: ExportSize = .original) -> Data? {
         commitPendingText()
         clearPendingCrop()
-        return Renderer.pngData(base: baseImage, annotations: document.annotations, crop: document.cropRect)
+        return Renderer.pngData(base: baseImage, annotations: document.annotations,
+                                crop: document.cropRect, size: size)
     }
 
     private func changed() {

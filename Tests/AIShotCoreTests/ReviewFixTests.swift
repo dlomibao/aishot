@@ -16,8 +16,18 @@ final class DegenerateShapeTests: XCTestCase {
         XCTAssertFalse(Annotation.arrow(from: .zero, to: CGPoint(x: 6, y: 0)).isDegenerate(minimum: 6))
     }
 
-    func testAHairlineBoxIsDegenerateEvenWhenLong() {
-        XCTAssertTrue(Annotation.box(CGRect(x: 0, y: 0, width: 200, height: 1)).isDegenerate(minimum: 6))
+    /// A long, thin box is a deliberate underline; only a click-sized one is
+    /// a stray click.
+    func testALongThinBoxIsKeptAsAnUnderline() {
+        XCTAssertFalse(Annotation.box(CGRect(x: 0, y: 0, width: 200, height: 1)).isDegenerate(minimum: 6))
+    }
+
+    func testAClickSizedBoxIsDegenerate() {
+        XCTAssertTrue(Annotation.box(CGRect(x: 0, y: 0, width: 3, height: 2)).isDegenerate(minimum: 6))
+    }
+
+    func testAThinHighlightAcrossALineIsKept() {
+        XCTAssertFalse(Annotation.highlight(CGRect(x: 0, y: 0, width: 300, height: 4)).isDegenerate(minimum: 6))
     }
 
     func testASmallButVisibleBoxIsKept() {

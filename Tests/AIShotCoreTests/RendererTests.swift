@@ -437,10 +437,8 @@ final class DocumentCropTests: XCTestCase {
         doc.crop(to: CGRect(x: 0, y: 0, width: 50, height: 50))
         doc.add(.box(CGRect(x: 5, y: 5, width: 10, height: 10)), style: style)
 
-        XCTAssertFalse(doc.lastOperationIsCrop)
-        doc.undo()
-        XCTAssertTrue(doc.lastOperationIsCrop, "the crop should now be the most recent operation")
-        doc.undo()
+        XCTAssertFalse(doc.undo(), "undoing the second box does not change the crop")
+        XCTAssertTrue(doc.undo(), "undoing the crop changes the visible bounds")
         XCTAssertNil(doc.cropRect)
         XCTAssertEqual(doc.annotations.count, 1)
     }
