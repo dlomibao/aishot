@@ -105,6 +105,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         editItem.submenu = editMenu
         main.addItem(editItem)
 
+        // The key monitor handles these shortcuts so ⌘= works as ⌘+; the menu
+        // shows them and works by click.
+        let viewItem = NSMenuItem()
+        let viewMenu = NSMenu(title: "View")
+        viewMenu.addItem(withTitle: "Zoom In", action: #selector(zoomIn), keyEquivalent: "+")
+        viewMenu.addItem(withTitle: "Zoom Out", action: #selector(zoomOut), keyEquivalent: "-")
+        viewMenu.addItem(withTitle: "Actual Size", action: #selector(zoomToActualSize), keyEquivalent: "0")
+        viewMenu.addItem(withTitle: "Zoom to Fit", action: #selector(zoomToFit), keyEquivalent: "9")
+        viewItem.submenu = viewMenu
+        main.addItem(viewItem)
+
         NSApp.mainMenu = main
     }
 
@@ -127,6 +138,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func saveAs() {
         controller?.saveAction()
     }
+
+    @objc private func zoomIn() { controller?.zoomIn() }
+    @objc private func zoomOut() { controller?.zoomOut() }
+    @objc private func zoomToActualSize() { controller?.zoomToActualSize() }
+    @objc private func zoomToFit() { controller?.zoomToFit() }
 }
 
 let delegate = AppDelegate()

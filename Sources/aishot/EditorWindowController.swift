@@ -10,6 +10,11 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
     private var swatches: [SwatchButton] = []
     private var sizeControl: NSSegmentedControl!
     private var copySizeMenu: NSPopUpButton!
+    private var zoomMenu: NSPopUpButton!
+    private let scrollView = NSScrollView()
+    /// Fit mode rescales the image whenever the window changes size. Any manual
+    /// zoom leaves it; Zoom to Fit returns to it.
+    private var fitsWindow = true
     private var undoButton: NSButton!
     private var redoButton: NSButton!
     private let onFinish: @MainActor (Data?) -> Void
@@ -22,13 +27,16 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
     init(image: CGImage, onFinish: @escaping @MainActor (Data?) -> Void) {
         self.onFinish = onFinish
 
-        let canvasSize = Self.canvasSize(for: CGSize(width: image.width, height: image.height))
+        let pixelSize = CGSize(width: image.width, height: image.height)
+        let canvasSize = Self.canvasSize(for: pixelSize)
 
-        canvas = CanvasView(image: image, frame: NSRect(origin: .zero, size: canvasSize))
+        // The canvas is always laid out at actual size; the scroll view's
+        // magnification does all the shrinking and enlarging.
+        canvas = CanvasView(image: image, frame: NSRect(origin: .zero, size: Self.actualSize(for: pixelSize)))
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: canvasSize.width, height: canvasSize.height + Self.toolbarHeight),
-            styleMask: [.titled, .closable], backing: .buffered, defer: false)
+            styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
         window.title = "aishot — \(image.width)×\(image.height)"
         window.isReleasedWhenClosed = false
         window.center()
@@ -44,18 +52,24 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
+    private static var backingScale: CGFloat { NSScreen.main?.backingScaleFactor ?? 2 }
+
+    /// The image's size in points at 100%: how big it was on screen.
+    private static func actualSize(for imagePixelSize: CGSize) -> CGSize {
+        CGSize(width: (imagePixelSize.width / backingScale).rounded(),
+               height: (imagePixelSize.height / backingScale).rounded())
+    }
+
+    /// The window's opening size: actual size, shrunk to fit the screen.
     private static func canvasSize(for imagePixelSize: CGSize) -> CGSize {
         let maxSize = (NSScreen.main?.visibleFrame.size).map {
             CGSize(width: $0.width * 0.9, height: $0.height * 0.9 - toolbarHeight)
         } ?? CGSize(width: 1200, height: 800)
         return CanvasTransform.preferredCanvasSize(
             imagePixelSize: imagePixelSize,
-            backingScale: NSScreen.main?.backingScaleFactor ?? 2,
+            backingScale: backingScale,
             maxPointSize: maxSize)
     }
-
-    private var canvasWidth: NSLayoutConstraint!
-    private var canvasHeight: NSLayoutConstraint!
 
     /// Laid out with constraints rather than hand-computed frames: the toolbar
     /// is pinned to the top edge, so no arithmetic during a resize can put it
@@ -71,11 +85,17 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
         buildToolRow(in: bar)
         buildStyleRow(in: bar)
 
-        canvas.translatesAutoresizingMaskIntoConstraints = false
-        content.addSubview(canvas, positioned: .below, relativeTo: bar)
-
-        canvasWidth = canvas.widthAnchor.constraint(equalToConstant: canvasSize.width)
-        canvasHeight = canvas.heightAnchor.constraint(equalToConstant: canvasSize.height)
+        scrollView.contentView = CenteringClipView()
+        scrollView.documentView = canvas
+        scrollView.allowsMagnification = true
+        scrollView.minMagnification = Zoom.minimum
+        scrollView.maxMagnification = Zoom.maximum
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = true
+        scrollView.autohidesScrollers = true
+        scrollView.backgroundColor = .underPageBackgroundColor
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        content.addSubview(scrollView, positioned: .below, relativeTo: bar)
 
         NSLayoutConstraint.activate([
             bar.leadingAnchor.constraint(equalTo: content.leadingAnchor),
@@ -83,14 +103,23 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
             bar.topAnchor.constraint(equalTo: content.topAnchor),
             bar.heightAnchor.constraint(equalToConstant: Self.toolbarHeight),
 
-            canvas.topAnchor.constraint(equalTo: bar.bottomAnchor),
-            canvas.centerXAnchor.constraint(equalTo: content.centerXAnchor),
-            canvas.bottomAnchor.constraint(equalTo: content.bottomAnchor),
-            canvasWidth,
-            canvasHeight,
+            scrollView.topAnchor.constraint(equalTo: bar.bottomAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: content.bottomAnchor),
         ])
 
+        // A pinch is a manual zoom, so it ends fit mode like ⌘+ does.
+        NotificationCenter.default.addObserver(self, selector: #selector(liveMagnifyStarted(_:)),
+                                               name: NSScrollView.willStartLiveMagnifyNotification, object: scrollView)
+        NotificationCenter.default.addObserver(self, selector: #selector(liveMagnifyEnded(_:)),
+                                               name: NSScrollView.didEndLiveMagnifyNotification, object: scrollView)
+
         resizeWindow(canvasSize: canvasSize, recenter: true)
+    }
+
+    private var chromeWidth: CGFloat {
+        max(toolbar.fittingSize.width, styleBar.fittingSize.width) + Self.barMargin * 2
     }
 
     /// Re-run whenever the image's dimensions change, which cropping does.
@@ -98,14 +127,14 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
     /// the window jump away from wherever you had moved it.
     private func resizeWindow(canvasSize: CGSize, recenter: Bool) {
         guard let window else { return }
-        let chromeWidth = max(toolbar.fittingSize.width, styleBar.fittingSize.width) + Self.barMargin * 2
         let width = max(canvasSize.width, chromeWidth).rounded()
         let topLeft = NSPoint(x: window.frame.minX, y: window.frame.maxY)
 
-        canvasWidth.constant = canvasSize.width
-        canvasHeight.constant = canvasSize.height
+        window.contentMinSize = NSSize(width: chromeWidth.rounded(), height: Self.toolbarHeight + 120)
         window.setContentSize(NSSize(width: width, height: canvasSize.height + Self.toolbarHeight))
         window.contentView?.layoutSubtreeIfNeeded()
+        fitsWindow = true
+        applyFit()
 
         if recenter {
             window.center()
@@ -236,6 +265,23 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
             + "so a smaller copy is cheaper to paste. Save always keeps full resolution."
         copySizeMenu.setAccessibilityLabel("Copied image size")
         styleBar.addArrangedSubview(copySizeMenu)
+
+        zoomMenu = NSPopUpButton(frame: .zero, pullsDown: true)
+        zoomMenu.controlSize = .small
+        zoomMenu.font = .systemFont(ofSize: 11)
+        zoomMenu.addItem(withTitle: "100%")
+        for (title, action) in [("Zoom to Fit  ⌘9", #selector(zoomToFit)),
+                                ("Actual Size  ⌘0", #selector(zoomToActualSize)),
+                                ("Zoom In  ⌘+", #selector(zoomIn)),
+                                ("Zoom Out  ⌘−", #selector(zoomOut))] {
+            zoomMenu.addItem(withTitle: title)
+            zoomMenu.lastItem?.target = self
+            zoomMenu.lastItem?.action = action
+        }
+        zoomMenu.toolTip = "Zoom. Pinch, or ⌘+ and ⌘−. Resizing the window refits until you zoom by hand."
+        zoomMenu.setAccessibilityLabel("Zoom")
+        styleBar.addArrangedSubview(zoomMenu)
+        styleBar.setCustomSpacing(12, after: zoomMenu)
 
         let reload = iconButton("arrow.clockwise", label: "Reload",
                                 tip: "Reload — ⌘V loads the image currently on the clipboard",
@@ -468,8 +514,58 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
     /// A crop (or undoing one) changes the image's dimensions, so the window
     /// has to grow or shrink around it.
     func canvasDidChangeBounds(_ view: CanvasView) {
+        canvas.setFrameSize(Self.actualSize(for: view.croppedBounds.size))
         resizeWindow(canvasSize: Self.canvasSize(for: view.croppedBounds.size), recenter: false)
         window?.title = "aishot — \(Int(view.croppedBounds.width))×\(Int(view.croppedBounds.height))"
+    }
+
+    // MARK: - Zoom
+
+    private func applyFit() {
+        scrollView.layoutSubtreeIfNeeded()
+        let magnification = Zoom.fit(document: canvas.frame.size, in: scrollView.contentSize)
+        setMagnification(magnification, centeredAt: NSPoint(x: canvas.frame.midX, y: canvas.frame.midY))
+    }
+
+    private func setMagnification(_ magnification: CGFloat, centeredAt point: NSPoint) {
+        scrollView.setMagnification(Zoom.clamp(magnification), centeredAt: point)
+        canvas.needsDisplay = true
+        updateZoomLabel()
+    }
+
+    /// Zooms around whatever is in the middle of the view, so ⌘+ does not
+    /// jump away from the part you were looking at.
+    private func zoomByHand(to magnification: CGFloat) {
+        fitsWindow = false
+        let visible = scrollView.documentVisibleRect
+        setMagnification(magnification, centeredAt: NSPoint(x: visible.midX, y: visible.midY))
+    }
+
+    @objc func zoomIn() { zoomByHand(to: Zoom.stepIn(from: scrollView.magnification)) }
+    @objc func zoomOut() { zoomByHand(to: Zoom.stepOut(from: scrollView.magnification)) }
+    @objc func zoomToActualSize() { zoomByHand(to: 1) }
+
+    @objc func zoomToFit() {
+        fitsWindow = true
+        applyFit()
+    }
+
+    private func updateZoomLabel() {
+        let label = Zoom.percentLabel(scrollView.magnification)
+        zoomMenu?.item(at: 0)?.title = fitsWindow ? "\(label) fit" : label
+        zoomMenu?.item(at: 1)?.state = fitsWindow ? .on : .off
+    }
+
+    @objc private func liveMagnifyStarted(_ notification: Notification) {
+        fitsWindow = false
+    }
+
+    @objc private func liveMagnifyEnded(_ notification: Notification) {
+        updateZoomLabel()
+    }
+
+    func windowDidResize(_ notification: Notification) {
+        if fitsWindow { applyFit() }
     }
 
     // MARK: - Keyboard
@@ -480,6 +576,8 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
         // sees their keys too. esc there must close the dialog, not the editor.
         guard let window, event.window === window,
               window.attachedSheet == nil, NSApp.modalWindow == nil else { return false }
+
+        if handleZoomShortcut(event) { return true }
 
         if canvas.isEditingText {
             if event.keyCode == 53 { canvas.discardPendingText(); return true }
@@ -524,3 +622,19 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
     }
 }
 
+extension EditorWindowController {
+    /// ⌘+ is usually typed as ⌘= (no Shift), and a menu key equivalent can
+    /// only match one character, so both are caught here.
+    func handleZoomShortcut(_ event: NSEvent) -> Bool {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        guard flags.contains(.command), !flags.contains(.option), !flags.contains(.control) else { return false }
+        switch event.charactersIgnoringModifiers {
+        case "=", "+": zoomIn()
+        case "-": zoomOut()
+        case "0": zoomToActualSize()
+        case "9": zoomToFit()
+        default: return false
+        }
+        return true
+    }
+}

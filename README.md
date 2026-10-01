@@ -40,6 +40,8 @@ in the lower right, no, the other one" becomes an arrow.
 | `⌘C` | copy the annotated image and keep editing |
 | `⌘V` | load the screenshot now on the clipboard |
 | `⌘S` | save a PNG to `~/Downloads`, keep editing |
+| `⌘+` `⌘−` / pinch | zoom in and out |
+| `⌘0` / `⌘9` | actual size / zoom to fit |
 | `⇧⏎` `⌥⏎` `⌃⏎` | line break while typing text |
 | `⏎` | copy annotated image and close |
 | `esc` | clears a selection first; otherwise cancels, leaving the clipboard untouched — asks first if you have drawn anything; while typing, discards just that text box |
@@ -80,6 +82,12 @@ is undoable — `⌘Z` restores the previous framing, so a mis-crop costs nothin
 back-and-forth session where you paste, read the answer, and adjust. `⌃⇧⌘4`
 again, then `⌘V` swaps in the new screenshot without relaunching. It asks first
 if you have already drawn something.
+
+**Zoom and resize freely.** The window opens with the screenshot fitted to it,
+and resizing the window rescales the image to fit, larger as well as smaller.
+Pinch or `⌘+` / `⌘−` to zoom in on fine detail; once you zoom by hand, resizing
+leaves your zoom alone until you choose **Zoom to Fit** (`⌘9`). Zoom only changes
+the view: the copied and saved image is always the original pixels.
 
 **Style applies to what you draw next.** Each shape keeps the colour and size
 it was drawn with, so a yellow note can sit beside a red arrow. Markup is sized
