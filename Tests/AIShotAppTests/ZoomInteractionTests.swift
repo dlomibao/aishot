@@ -35,11 +35,17 @@ final class ZoomInteractionTests: XCTestCase {
 
     private var canvas: CanvasView { scrollView.documentView as! CanvasView }
 
-    /// True when the whole canvas is visible and touches the viewport on at
-    /// least one axis — what "fit" means.
+    /// The whole canvas is visible and touches the viewport on at least one
+    /// axis — what "fit" means. Measured against the scroll view's frame, since
+    /// a fitted image needs no scroll bars.
     private func assertFits(file: StaticString = #filePath, line: UInt = #line) {
-        let expected = Zoom.fit(document: canvas.frame.size, in: scrollView.contentSize)
+        let viewport = scrollView.frame.size
+        let expected = Zoom.fit(document: canvas.frame.size, in: viewport)
         XCTAssertEqual(scrollView.magnification, expected, accuracy: 0.01, file: file, line: line)
+        let shown = NSSize(width: canvas.frame.width * scrollView.magnification,
+                           height: canvas.frame.height * scrollView.magnification)
+        XCTAssertLessThanOrEqual(shown.width, viewport.width + 1, "fitted image must not overflow", file: file, line: line)
+        XCTAssertLessThanOrEqual(shown.height, viewport.height + 1, "fitted image must not overflow", file: file, line: line)
     }
 
     private func resizeContent(to size: NSSize) {
@@ -90,10 +96,15 @@ final class ZoomInteractionTests: XCTestCase {
         XCTAssertEqual(scrollView.magnification, Zoom.stepOut(from: 1), accuracy: 0.001)
     }
 
-    func testTheWindowCannotShrinkBelowTheToolbar() {
-        resizeContent(to: NSSize(width: 50, height: 50))
-        XCTAssertGreaterThanOrEqual(window.contentLayoutRect.width, window.contentMinSize.width - 0.5)
-        XCTAssertGreaterThan(window.contentMinSize.width, 300, "the minimum must leave room for the toolbar")
+    /// contentMinSize limits resizing by the user, not setContentSize, so the
+    /// minimum itself is what can be checked here.
+    func testTheWindowCannotBeDraggedNarrowerThanTheToolbar() {
+        let toolbarRows = window.contentView!.subviews.compactMap { $0 as? NSVisualEffectView }.first!
+            .subviews.compactMap { $0 as? NSStackView }
+        let widest = toolbarRows.map(\.fittingSize.width).max() ?? 0
+        XCTAssertGreaterThan(widest, 300)
+        XCTAssertGreaterThanOrEqual(window.contentMinSize.width, widest)
+        XCTAssertGreaterThan(window.contentMinSize.height, 76, "room for the toolbar plus some image")
     }
 
     func testCroppingShrinksTheCanvasToTheCropAndRefits() {
