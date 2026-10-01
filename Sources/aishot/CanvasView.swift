@@ -70,6 +70,18 @@ final class CanvasView: NSView, NSTextFieldDelegate {
         CanvasTransform(imageSize: croppedBounds.size, viewSize: bounds.size)
     }
 
+    /// The scroll view's zoom. Click tolerance, minimum shape size and the
+    /// outlines are divided by it so they stay the same size on screen at any
+    /// zoom; otherwise picking a shape at 25% would need pixel-perfect aim.
+    private var magnification: CGFloat {
+        enclosingScrollView?.magnification ?? 1
+    }
+
+    /// Screen points converted to this view's points at the current zoom.
+    private func onScreen(_ points: CGFloat) -> CGFloat {
+        points / magnification
+    }
+
     private var style: Style {
         .scaled(to: croppedBounds.size,
                 backingScale: window?.screen?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2,
@@ -148,11 +160,11 @@ final class CanvasView: NSView, NSTextFieldDelegate {
     private func drawSelectionOutline(in ctx: CGContext) {
         let shapes = displayedAnnotations
         guard let index = selectedIndex, shapes.indices.contains(index) else { return }
-        let rect = viewRect(fromImage: shapes[index].bounds).insetBy(dx: -4, dy: -4)
+        let rect = viewRect(fromImage: shapes[index].bounds).insetBy(dx: -onScreen(4), dy: -onScreen(4))
         ctx.saveGState()
         ctx.setStrokeColor(NSColor.controlAccentColor.cgColor)
-        ctx.setLineWidth(1.5)
-        ctx.setLineDash(phase: 0, lengths: [5, 3])
+        ctx.setLineWidth(onScreen(1.5))
+        ctx.setLineDash(phase: 0, lengths: [onScreen(5), onScreen(3)])
         ctx.stroke(rect)
         ctx.restoreGState()
     }
@@ -177,8 +189,8 @@ final class CanvasView: NSView, NSTextFieldDelegate {
         ctx.fillPath(using: .evenOdd)
 
         ctx.setStrokeColor(CGColor(red: 1, green: 1, blue: 1, alpha: 0.95))
-        ctx.setLineWidth(1)
-        ctx.stroke(rect.insetBy(dx: 0.5, dy: 0.5))
+        ctx.setLineWidth(onScreen(1))
+        ctx.stroke(rect.insetBy(dx: onScreen(0.5), dy: onScreen(0.5)))
         ctx.restoreGState()
     }
 
@@ -258,20 +270,20 @@ final class CanvasView: NSView, NSTextFieldDelegate {
 
         switch tool {
         case .crop:
-            guard dragged.width >= 8, dragged.height >= 8 else { return }
+            guard dragged.width >= onScreen(8), dragged.height >= onScreen(8) else { return }
             proposeCrop(imageRect(fromView: dragged))
         case .text:
             // A click rather than a drag still works; it just gets a default
             // wrap width instead of one you chose.
-            let box = dragged.width >= 24 ? dragged
+            let box = dragged.width >= onScreen(24) ? dragged
                 : CGRect(x: start.x, y: start.y - style.fontSize / transform.scale * 1.4,
-                         width: min(260, max(120, bounds.width - start.x - 8)),
+                         width: min(onScreen(260), max(onScreen(120), bounds.width - start.x - onScreen(8))),
                          height: style.fontSize / transform.scale * 1.4)
             beginTextEntry(in: box)
         default:
             // A few screen points, converted to image pixels.
             guard let annotation = pendingAnnotation,
-                  !annotation.isDegenerate(minimum: 4 * transform.scale) else { return }
+                  !annotation.isDegenerate(minimum: onScreen(4) * transform.scale) else { return }
             document.add(annotation, style: style)
             changed()
         }
@@ -281,7 +293,7 @@ final class CanvasView: NSView, NSTextFieldDelegate {
 
     private func beginSelection(at point: CGPoint) {
         let hit = document.annotations.indexOfShape(at: imagePoint(fromView: point),
-                                                    tolerance: 6 * transform.scale)
+                                                    tolerance: onScreen(6) * transform.scale)
         selectedIndex = hit
         if hit != nil {
             isMovingSelection = true
@@ -328,10 +340,25 @@ final class CanvasView: NSView, NSTextFieldDelegate {
         needsDisplay = true
     }
 
+    /// Inside a zoomed scroll view the buttons would be magnified with the
+    /// image: huge at 400%, too small to hit at 25%. They sit in the scroll
+    /// view's superview instead, positioned from the selection's on-screen rect.
+    private var cropButtonHost: NSView {
+        enclosingScrollView?.superview ?? self
+    }
+
+    /// The area the buttons may occupy, in the host's coordinates.
+    private var cropButtonArea: CGRect {
+        guard let scrollView = enclosingScrollView, let host = scrollView.superview else { return bounds }
+        return scrollView.convert(scrollView.bounds, to: host)
+    }
+
     private func showCropButtons() {
         clearCropButtons()
         guard let pendingCrop else { return }
-        let rect = viewRect(fromImage: pendingCrop)
+        let host = cropButtonHost
+        let rect = convert(viewRect(fromImage: pendingCrop), to: host)
+        let area = cropButtonArea
 
         let confirm = NSButton(title: "✓", target: self, action: #selector(confirmCrop))
         confirm.bezelStyle = .circular
@@ -343,21 +370,34 @@ final class CanvasView: NSView, NSTextFieldDelegate {
         cancel.setAccessibilityLabel("Cancel crop")
 
         // Prefer just beneath the selection's right edge, but clamp into the
-        // view: a narrow crop near an edge would otherwise put the buttons
-        // off-canvas, leaving no way to confirm.
+        // visible area: a narrow crop near an edge would otherwise put the
+        // buttons out of view, leaving no way to confirm.
         let size: CGFloat = 30
         let pairWidth = size * 2 + 6
         let below = rect.minY - size - 6
-        let y = min(max(below >= 0 ? below : rect.minY + 6, 4), max(4, bounds.height - size - 4))
-        let preferredX = rect.maxX - pairWidth
-        let x = min(max(preferredX, 4), max(4, bounds.width - pairWidth - 4))
+        let y = min(max(below >= area.minY ? below : rect.minY + 6, area.minY + 4), max(area.minY + 4, area.maxY - size - 4))
+        let x = min(max(rect.maxX - pairWidth, area.minX + 4), max(area.minX + 4, area.maxX - pairWidth - 4))
         confirm.frame = NSRect(x: x, y: y, width: size, height: size)
         cancel.frame = NSRect(x: x + size + 6, y: y, width: size, height: size)
 
-        addSubview(confirm)
-        addSubview(cancel)
+        host.addSubview(confirm)
+        host.addSubview(cancel)
         cropConfirm = confirm
         cropCancel = cancel
+    }
+
+    /// Scrolling or zooming moves the selection on screen; the buttons follow.
+    @objc private func visibleAreaDidChange(_ notification: Notification) {
+        if pendingCrop != nil { showCropButtons() }
+    }
+
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        NotificationCenter.default.removeObserver(self, name: NSView.boundsDidChangeNotification, object: nil)
+        guard let clip = enclosingScrollView?.contentView else { return }
+        clip.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(self, selector: #selector(visibleAreaDidChange(_:)),
+                                               name: NSView.boundsDidChangeNotification, object: clip)
     }
 
     private func clearCropButtons() {

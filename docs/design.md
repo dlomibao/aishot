@@ -168,6 +168,31 @@ inactive and cut the minimum window width from about 920pt to about 630pt.
 Cancel and Copy keep text labels because they are the two ways out; Reload,
 Undo, Redo and Save are icons whose standard ⌘ shortcuts live in tooltips.
 
+## Zoom and resizing
+
+The canvas sits inside a scroll view and is always laid out at actual size,
+where 100% is the size the screenshot had on screen. The scroll view's
+magnification does all the shrinking and enlarging. That keeps the canvas's own
+drawing and coordinate code unaware of zoom: AppKit applies the magnification to
+drawing and converts mouse positions back into canvas points.
+
+The window starts in fit mode, and resizing it refits, including enlarging a
+small screenshot. The opening size still never enlarges, so the window opens at
+actual size or smaller. Any manual zoom (a pinch, `⌘+`, `⌘−`, `⌘0`) leaves fit
+mode, and Zoom to Fit returns to it. A crop still resizes the window around the
+result and returns to fit mode, because the crop changes what you are looking at.
+
+Some things must stay the same size on screen at any zoom: the click tolerance
+for selecting, the minimum size below which a drag counts as a click, the
+selection outline and the crop overlay's border. Those are divided by the
+magnification. The crop ✓ / ✕ buttons are not inside the zoomed area at all,
+since magnified controls are huge at 400% and impossible to hit at 25%. They
+live in the scroll view's superview and follow the selection as it scrolls.
+
+`⌘+` is handled in the key monitor rather than as a menu key equivalent, because
+most people type it as `⌘=` without Shift, and a key equivalent matches only one
+character.
+
 ## Decisions
 
 **Redaction uses `.copy` blend mode.** A composited black rect would still be
