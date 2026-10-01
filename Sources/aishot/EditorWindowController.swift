@@ -521,9 +521,12 @@ final class EditorWindowController: NSWindowController, CanvasViewDelegate, NSWi
 
     // MARK: - Zoom
 
+    /// Fit against the whole scroll view, not `contentSize`: with a mouse
+    /// attached, scroll bars take space while the image is still too big,
+    /// and once it fits they disappear and leave a gap.
     private func applyFit() {
         scrollView.layoutSubtreeIfNeeded()
-        let magnification = Zoom.fit(document: canvas.frame.size, in: scrollView.contentSize)
+        let magnification = Zoom.fit(document: canvas.frame.size, in: scrollView.frame.size)
         setMagnification(magnification, centeredAt: NSPoint(x: canvas.frame.midX, y: canvas.frame.midY))
     }
 
